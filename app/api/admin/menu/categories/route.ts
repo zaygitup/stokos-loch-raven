@@ -250,6 +250,29 @@ function formatCategoryWithConfig(category: any, config: any = null) {
   };
 }
 
+function dedupeCategoryRows(rows: any[]) {
+  const map = new Map<string, any>();
+
+  rows.forEach((row) => {
+    const key = [
+      slugify(row.slug || row.categorySlug || row.name || row.categoryName || ""),
+      normalizeStoreId(row.storeId),
+    ]
+      .filter(Boolean)
+      .join("|");
+
+    if (!key) return;
+
+    if (!map.has(key)) {
+      map.set(key, row);
+    }
+  });
+
+  return Array.from(map.values()).sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)
+  );
+}
+
 async function getCategoryRows(storeId?: string | null) {
   const cleanStoreId = normalizeStoreId(storeId);
   const configQuery: any = {};
@@ -301,23 +324,23 @@ async function getCategoryRows(storeId?: string | null) {
       .sort({ sortOrder: 1, createdAt: 1 })
       .lean();
 
-    return legacyCategories.map((category: any) =>
-      formatCategoryWithConfig(category, {
-        _id: "",
-        categoryId: String(category._id),
-        storeId: category.storeId,
-        categoryName: category.name,
-        categorySlug: category.slug,
-        available: true,
-        status: category.status,
-        sortOrder: category.sortOrder,
-      })
+    return dedupeCategoryRows(
+      legacyCategories.map((category: any) =>
+        formatCategoryWithConfig(category, {
+          _id: "",
+          categoryId: String(category._id),
+          storeId: category.storeId,
+          categoryName: category.name,
+          categorySlug: category.slug,
+          available: true,
+          status: category.status,
+          sortOrder: category.sortOrder,
+        })
+      )
     );
   }
 
-  return rows.sort(
-    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)
-  );
+  return dedupeCategoryRows(rows);
 }
 
 function getErrorMessage(error: any) {
@@ -343,7 +366,6 @@ function getErrorMessage(error: any) {
 export async function GET(req: Request) {
   try {
     await connectDB();
-
     const { searchParams } = new URL(req.url);
     const storeId = searchParams.get("storeId");
 
@@ -369,7 +391,6 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     await connectDB();
-
     const body = await req.json();
     const categoryPayload = buildCategoryPayload(body);
     const storeId = normalizeStoreId(body.storeId);
@@ -392,18 +413,24 @@ export async function POST(req: Request) {
       });
     }
 
-    const existingConfig = await findDuplicateStoreConfig({
-      categoryId: String(category._id),
-      storeId,
-    });
+    const existingConfig =
+      (await findDuplicateStoreConfig({
+        categoryId: String(category._id),
+        storeId,
+      })) ||
+      (await CategoryStoreConfig.findOne({
+        storeId,
+        categorySlug: categoryPayload.slug,
+      }).lean());
 
     if (existingConfig) {
       return NextResponse.json(
         {
-          success: false,
-          message: "This category already exists for this store.",
+          success: true,
+          message: "Category already linked to this store.",
+          data: formatCategoryWithConfig(category, existingConfig),
         },
-        { status: 409 }
+        { status: 200 }
       );
     }
 
@@ -438,7 +465,6 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     await connectDB();
-
     const body = await req.json();
     const configId = cleanString(body.storeConfigId || body.configId);
     const categoryId = cleanString(body.categoryId || body.id || body._id);
@@ -557,7 +583,23 @@ export async function DELETE(req: Request) {
     const config = await CategoryStoreConfig.findById(id);
 
     if (config) {
-      await CategoryStoreConfig.deleteOne({ _id: config._id });
+      const configStoreId = normalizeStoreId(config.storeId);
+      const configCategoryId = cleanString(config.categoryId);
+      const configCategorySlug = cleanString(config.categorySlug);
+      const duplicateCleanupQuery: any = {
+        storeId: configStoreId,
+        $or: [{ _id: config._id }],
+      };
+
+      if (configCategoryId) {
+        duplicateCleanupQuery.$or.push(categoryIdMatch(configCategoryId));
+      }
+
+      if (configCategorySlug) {
+        duplicateCleanupQuery.$or.push({ categorySlug: configCategorySlug });
+      }
+
+      await CategoryStoreConfig.deleteMany(duplicateCleanupQuery);
 
       return NextResponse.json({
         success: true,

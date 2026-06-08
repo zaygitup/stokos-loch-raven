@@ -282,39 +282,42 @@ export default function MenuManagementClient() {
     const ok = window.confirm("Are you sure you want to delete this?");
     if (!ok) return;
 
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+
     const snapshot = getSnapshot();
 
     setPendingActions((count) => count + 1);
 
     if (type === "products") {
       setUiProducts((prev) =>
-        prev.filter((item) => getSafeId(item) !== String(id))
+        prev.filter((item) => !itemHasAnyId(item, cleanId))
       );
     }
 
     if (type === "categories") {
       setUiCategories((prev) =>
-        prev.filter((item) => getSafeId(item) !== String(id))
+        prev.filter((item) => !itemHasAnyId(item, cleanId))
       );
     }
 
     if (type === "modifiers") {
       setUiModifierGroups((prev) =>
-        prev.filter((item) => getSafeId(item) !== String(id))
+        prev.filter((item) => !itemHasAnyId(item, cleanId))
       );
     }
 
     if (type === "upsells") {
       setUiUpsellRules((prev) =>
-        prev.filter((item) => getSafeId(item) !== String(id))
+        prev.filter((item) => !itemHasAnyId(item, cleanId))
       );
     }
 
     try {
-      if (type === "products") await deleteProduct(id);
-      if (type === "categories") await deleteCategory(id);
-      if (type === "modifiers") await deleteModifier(id);
-      if (type === "upsells") await deleteUpsell(id);
+      if (type === "products") await deleteProduct(cleanId);
+      if (type === "categories") await deleteCategory(cleanId);
+      if (type === "modifiers") await deleteModifier(cleanId);
+      if (type === "upsells") await deleteUpsell(cleanId);
     } catch (error) {
       console.error("Delete failed:", error);
       restoreSnapshot(snapshot);
@@ -329,9 +332,31 @@ export default function MenuManagementClient() {
   ) => {
     if (!modal) return;
 
-    const finalStoreId = getItemStoreId(value) || firstStoreId;
+    const isCategorySave = modal.type === "categories";
 
-    if (!finalStoreId) {
+    const saveValue = isCategorySave
+      ? buildCategorySavePayload(
+          value as Category,
+          selectedStoreFilter,
+          stores
+        )
+      : value;
+
+    const categoryTargetStoreIds = isCategorySave
+      ? getCategoryTargetStoreIds(saveValue as Category, "", stores)
+      : [];
+
+    const finalStoreId = isCategorySave
+      ? categoryTargetStoreIds[0] || ""
+      : getItemStoreId(saveValue) ||
+        getSelectedStoreFallback(selectedStoreFilter, firstStoreId);
+
+    if (isCategorySave && categoryTargetStoreIds.length === 0) {
+      alert("Please select at least one store for category.");
+      return;
+    }
+
+    if (!isCategorySave && !finalStoreId) {
       alert("Please add a store first.");
       return;
     }
@@ -340,16 +365,23 @@ export default function MenuManagementClient() {
     const isEdit = Boolean(modal.item);
     const tempId = `temp-${modal.type}-${Date.now()}`;
 
-    const valueWithStore = attachStoreId(value, finalStoreId);
+    const valueWithStore = isCategorySave
+      ? (saveValue as Category)
+      : attachStoreId(saveValue, finalStoreId);
 
     const mergedValue = isEdit
-      ? attachStoreId(
-          {
+      ? isCategorySave
+        ? ({
             ...(modal.item as object),
-            ...(value as object),
-          } as Product | Category | ModifierGroup | UpsellRule,
-          finalStoreId
-        )
+            ...(saveValue as object),
+          } as Product | Category | ModifierGroup | UpsellRule)
+        : attachStoreId(
+            {
+              ...(modal.item as object),
+              ...(saveValue as object),
+            } as Product | Category | ModifierGroup | UpsellRule,
+            finalStoreId
+          )
       : valueWithStore;
 
     setModal(null);
@@ -362,9 +394,18 @@ export default function MenuManagementClient() {
     }
 
     if (modal.type === "categories") {
-      setUiCategories((prev) =>
-        optimisticUpsert(prev, mergedValue as Category, isEdit, tempId)
-      );
+      setUiCategories((prev) => {
+        const optimisticRows = isEdit
+          ? [mergedValue as Category]
+          : buildOptimisticCategoryRows(
+              valueWithStore as Category,
+              finalStoreId,
+              tempId,
+              stores
+            );
+
+        return upsertUiCategoryRows(prev, optimisticRows);
+      });
     }
 
     if (modal.type === "modifiers") {
@@ -382,8 +423,8 @@ export default function MenuManagementClient() {
     try {
       if (modal.type === "products") {
         const productPayload = isEdit
-          ? ({ ...(modal.item as object), ...(value as object) } as Product)
-          : (value as Product);
+          ? ({ ...(modal.item as object), ...(saveValue as object) } as Product)
+          : (saveValue as Product);
 
         isEdit
           ? await updateProduct(productPayload)
@@ -391,9 +432,22 @@ export default function MenuManagementClient() {
       }
 
       if (modal.type === "categories") {
-        isEdit
+        const savedCategoryResult = isEdit
           ? await updateCategory(mergedValue as Category)
           : await addCategory(valueWithStore as Category);
+
+        const savedRows = Array.isArray(savedCategoryResult)
+          ? savedCategoryResult
+          : savedCategoryResult
+          ? [savedCategoryResult]
+          : [];
+
+        setUiCategories((prev) =>
+          upsertUiCategoryRows(
+            removeTempCategoryRows(prev, tempId),
+            savedRows as Category[]
+          )
+        );
       }
 
       if (modal.type === "modifiers") {
@@ -668,22 +722,61 @@ function getLabel(tab: TabType) {
   return "Upsell";
 }
 
+function slugifyStoreName(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function getStoreValue(store: StoreItem) {
-  return String(store.slug || store._id || store.id || "").trim();
+  return (
+    normalizeStoreValue(store.slug) ||
+    normalizeStoreValue(store._id) ||
+    normalizeStoreValue(store.id) ||
+    slugifyStoreName(store.name)
+  );
 }
 
 function getSafeId(item: unknown) {
-  if (!item || typeof item !== "object") return "";
+  return getAllItemIds(item)[0] || "";
+}
+
+function getAllItemIds(item: unknown) {
+  if (!item || typeof item !== "object") return [];
 
   const obj = item as {
-    _id?: string;
-    id?: string;
-    slug?: string;
-    name?: string;
-    offer?: string;
+    storeConfigId?: unknown;
+    configId?: unknown;
+    _id?: unknown;
+    id?: unknown;
+    categoryId?: unknown;
+    slug?: unknown;
+    name?: unknown;
+    offer?: unknown;
   };
 
-  return String(obj._id || obj.id || obj.slug || obj.name || obj.offer || "");
+  return [
+    obj.storeConfigId,
+    obj.configId,
+    obj._id,
+    obj.id,
+    obj.categoryId,
+    obj.slug,
+    obj.name,
+    obj.offer,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function itemHasAnyId(item: unknown, id: string) {
+  const cleanId = String(id || "").trim();
+  if (!cleanId) return false;
+
+  return getAllItemIds(item).includes(cleanId);
 }
 
 function getItemStoreId(item: unknown) {
@@ -731,6 +824,90 @@ function normalizeStoreValue(value: unknown) {
   }
 
   return "";
+}
+
+function getAllStoreIds(stores: StoreItem[]) {
+  return stores
+    .map((store) => normalizeStoreValue(getStoreValue(store)))
+    .filter(Boolean);
+}
+
+function getSelectedStoreFallback(
+  selectedStoreFilter: string,
+  firstStoreId: string
+) {
+  const selectedStoreId = normalizeStoreValue(selectedStoreFilter);
+
+  if (selectedStoreId && selectedStoreId !== "all") {
+    return selectedStoreId;
+  }
+
+  return normalizeStoreValue(firstStoreId);
+}
+
+function getUniqueStoreIds(storeIds: string[]) {
+  return Array.from(
+    new Set(
+      storeIds
+        .map((storeId) => normalizeStoreValue(storeId))
+        .filter((storeId) => storeId && storeId !== "all")
+    )
+  );
+}
+
+function getCategorySavePrimaryStoreId(category: Category) {
+  const categoryObj = category as CategoryWithStoreMeta;
+
+  const storeIds = Array.isArray(categoryObj.storeIds)
+    ? getUniqueStoreIds(categoryObj.storeIds.map((storeId) => String(storeId)))
+    : [];
+
+  return storeIds[0] || normalizeStoreValue(categoryObj.storeId);
+}
+
+function buildCategorySavePayload(
+  category: Category,
+  selectedStoreFilter: string,
+  stores: StoreItem[]
+) {
+  const categoryObj = category as CategoryWithStoreMeta;
+
+  const selectedStoreId = normalizeStoreValue(selectedStoreFilter);
+
+  const currentStoreIds = Array.isArray(categoryObj.storeIds)
+    ? getUniqueStoreIds(categoryObj.storeIds.map((storeId) => String(storeId)))
+    : [];
+
+  const directStoreId = normalizeStoreValue(categoryObj.storeId);
+
+  const allStoreIds = getUniqueStoreIds(getAllStoreIds(stores));
+
+  let targetStoreIds: string[] = [];
+
+  if (selectedStoreId && selectedStoreId !== "all") {
+    targetStoreIds = [selectedStoreId];
+  } else if (currentStoreIds.length) {
+    targetStoreIds = currentStoreIds;
+  } else if (allStoreIds.length) {
+    targetStoreIds = allStoreIds;
+  } else if (directStoreId && directStoreId !== "all") {
+    targetStoreIds = [directStoreId];
+  }
+
+  targetStoreIds = getUniqueStoreIds(targetStoreIds);
+
+  const payload = {
+    ...(category as object),
+    storeId: targetStoreIds[0] || "",
+  } as CategoryWithStoreMeta;
+
+  if (targetStoreIds.length > 0) {
+    payload.storeIds = targetStoreIds;
+  } else {
+    delete payload.storeIds;
+  }
+
+  return payload as Category;
 }
 
 function getStoreConfigs(item: unknown) {
@@ -951,6 +1128,161 @@ function addTempId<T>(item: T, tempId: string): T {
     ...obj,
     id: tempId,
   } as T;
+}
+
+type CategoryWithStoreMeta = Category & {
+  storeIds?: unknown[];
+  storeConfigId?: unknown;
+  configId?: unknown;
+  categoryId?: unknown;
+  storeId?: unknown;
+  categoryName?: unknown;
+  slug?: unknown;
+};
+
+function getCategoryUiRowKeys(category: unknown) {
+  if (!category || typeof category !== "object") return [];
+
+  const obj = category as CategoryWithStoreMeta;
+
+  const storeConfigId = String(obj.storeConfigId || obj.configId || "").trim();
+  const storeId = getItemStoreId(category).toLowerCase();
+
+  const categoryName = String(
+    obj.name || obj.categoryName || obj.slug || obj.categoryId || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const tempId = String((obj as any).id || "").trim();
+
+  const keys: string[] = [];
+
+  // Best key: each store config row is unique
+  if (storeConfigId) {
+    keys.push(`config:${storeConfigId}`);
+  }
+
+  // Optimistic/new row key: store + category name
+  if (storeId && categoryName) {
+    keys.push(`store-category:${storeId}|${categoryName}`);
+  }
+
+  // Temp row key, but only store-specific
+  if (tempId && tempId.startsWith("temp-") && storeId) {
+    keys.push(`temp:${storeId}|${tempId}`);
+  }
+
+  return keys.filter(Boolean);
+}
+
+function sameCategoryUiRow(first: unknown, second: unknown) {
+  const firstKeys = getCategoryUiRowKeys(first);
+  const secondKeys = getCategoryUiRowKeys(second);
+
+  return firstKeys.some((key) => secondKeys.includes(key));
+}
+
+function sortUiCategoryRows(categories: Category[]) {
+  return [...categories].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)
+  );
+}
+
+function upsertUiCategoryRows(currentRows: Category[], nextRows: Category[]) {
+  if (!nextRows.length) return currentRows;
+
+  const mergedRows = [...currentRows];
+
+  nextRows.forEach((nextRow) => {
+    const existingIndex = mergedRows.findIndex((currentRow) =>
+      sameCategoryUiRow(currentRow, nextRow)
+    );
+
+    if (existingIndex >= 0) {
+      mergedRows[existingIndex] = {
+        ...(mergedRows[existingIndex] as object),
+        ...(nextRow as object),
+      } as Category;
+
+      return;
+    }
+
+    mergedRows.unshift(nextRow);
+  });
+
+  return sortUiCategoryRows(mergedRows);
+}
+
+function removeTempCategoryRows(categories: Category[], tempId: string) {
+  return categories.filter((category) => {
+    const keys = getCategoryUiRowKeys(category);
+    return !keys.some((key) => key.includes(tempId));
+  });
+}
+function getCategoryTargetStoreIds(
+  category: Category,
+  fallbackStoreId: string,
+  stores: StoreItem[] = []
+) {
+  const categoryObj = category as CategoryWithStoreMeta;
+
+  const storeIds = Array.isArray(categoryObj.storeIds)
+    ? categoryObj.storeIds
+        .map((storeId) => normalizeStoreValue(storeId))
+        .filter((storeId) => storeId && storeId !== "all")
+    : [];
+
+  if (storeIds.length) {
+    return Array.from(new Set(storeIds));
+  }
+
+  const directStoreId = normalizeStoreValue(categoryObj.storeId);
+
+  if (directStoreId && directStoreId !== "all") {
+    return [directStoreId];
+  }
+
+  const fallback = normalizeStoreValue(fallbackStoreId);
+
+  if (fallback && fallback !== "all") {
+    return [fallback];
+  }
+
+  return getUniqueStoreIds(getAllStoreIds(stores));
+}
+
+function buildOptimisticCategoryRows(
+  category: Category,
+  fallbackStoreId: string,
+  tempId: string,
+  stores: StoreItem[] = []
+) {
+  const targetStoreIds = getCategoryTargetStoreIds(
+    category,
+    fallbackStoreId,
+    stores
+  );
+
+  if (!targetStoreIds.length) {
+    return [addTempId(category, tempId) as Category];
+  }
+
+  return targetStoreIds.map((storeId, index) => {
+    const configId = `${tempId}-config-${storeId}`;
+
+    const row = {
+      ...(category as object),
+      id: `${tempId}-${index}`,
+      storeId,
+      storeConfigId: configId,
+      configId,
+    } as CategoryWithStoreMeta;
+
+    delete row.storeIds;
+
+    return row as Category;
+  });
 }
 
 function optimisticUpsert<T>(

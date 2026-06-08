@@ -48,11 +48,7 @@ function getItemId(item: unknown, fallback: string) {
     const obj = item as MongoObject;
 
     return String(
-      obj._id ||
-        obj.id ||
-        obj.categoryId ||
-        obj.slug ||
-        fallback
+      obj._id || obj.id || obj.categoryId || obj.slug || fallback
     ).trim();
   }
 
@@ -63,11 +59,7 @@ function getCategoryDeleteId(item: unknown) {
   if (typeof item === "object" && item !== null) {
     const obj = item as MongoObject;
 
-    return String(
-      obj.storeConfigId ||
-        obj.configId ||
-        ""
-    ).trim();
+    return String(obj.storeConfigId || obj.configId || "").trim();
   }
 
   return "";
@@ -84,13 +76,7 @@ function getTextValue(value: unknown, fallback = "") {
     const obj = value as MongoObject;
 
     return String(
-      obj.name ||
-        obj.title ||
-        obj.offer ||
-        obj.slug ||
-        obj._id ||
-        obj.id ||
-        fallback
+      obj.name || obj.title || obj.offer || obj.slug || obj._id || obj.id || fallback
     ).trim();
   }
 
@@ -439,8 +425,12 @@ export default function CategoryTable({
   const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [isAllStoresView, totalItems]);
+    setCurrentPage((prevPage) => {
+      if (prevPage > totalPages) return totalPages;
+      if (prevPage < 1) return 1;
+      return prevPage;
+    });
+  }, [isAllStoresView, totalPages]);
 
   const safeCurrentPage = Math.min(currentPage, totalPages);
 
@@ -497,7 +487,11 @@ export default function CategoryTable({
                       <div className="flex flex-wrap gap-2">
                         {group.rows.map((row, rowIndex) => (
                           <StoreDeleteBadge
-                            key={`${group.key}-${row.deleteId || row.categoryId}-${row.storeId}-${rowIndex}`}
+                            key={`${
+                              group.key
+                            }-${row.deleteId || row.categoryId}-${
+                              row.storeId
+                            }-${rowIndex}`}
                             storeName={row.storeName}
                             onDelete={() => {
                               if (!row.deleteId) {
@@ -532,7 +526,11 @@ export default function CategoryTable({
 
                   return (
                     <tr
-                      key={`${deleteId || categoryId}-${getItemStoreId(category) || storeName}-${startIndex + index}`}
+                      key={`${
+                        deleteId || categoryId
+                      }-${getItemStoreId(category) || storeName}-${
+                        startIndex + index
+                      }`}
                       className="transition hover:bg-green-50/50"
                     >
                       <td className="px-5 py-5">

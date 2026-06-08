@@ -40,6 +40,7 @@ type MongoItem = {
   configId?: string;
   storeConfigId?: string;
   categoryId?: string;
+  storeId?: string;
   slug?: string;
   name?: string;
   offer?: string;
@@ -59,25 +60,16 @@ function getMongoId(item: unknown): string {
 
   const obj = item as MongoItem;
 
-  return String(obj._id || obj.id || obj.slug || obj.name || obj.offer || "");
-}
-
-function getCategoryDeleteIds(item: unknown): string[] {
-  if (!item || typeof item !== "object") return [];
-
-  const obj = item as MongoItem;
-
-  return [
-    obj.storeConfigId,
-    obj.configId,
-    obj._id,
-    obj.id,
-    obj.categoryId,
-    obj.slug,
-    obj.name,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
+  return String(
+    obj.storeConfigId ||
+      obj.configId ||
+      obj._id ||
+      obj.id ||
+      obj.slug ||
+      obj.name ||
+      obj.offer ||
+      ""
+  );
 }
 
 function safeArray<T>(value: unknown): T[] {
@@ -178,13 +170,13 @@ async function apiGet<T>(type: MenuEntity): Promise<T[]> {
     const json = await res.json().catch(() => null);
 
     if (!res.ok || json?.success === false) {
-      console.warn(`Failed to load ${type}`, json);
+      console.error(`Failed to load ${type}`, json);
       return [];
     }
 
     return getArrayFromResponse<T>(json, type);
   } catch (error) {
-    console.warn(`Failed to load ${type}`, error);
+    console.error(`Failed to load ${type}`, error);
     return [];
   }
 }
@@ -201,7 +193,7 @@ async function apiCreate<T>(type: MenuEntity, payload: T): Promise<T> {
   const json = await res.json().catch(() => null);
 
   if (!res.ok || json?.success === false) {
-    console.warn(`CREATE ${type} ERROR:`, json);
+    console.error(`CREATE ${type} ERROR:`, json);
     throw new Error(json?.message || `Failed to create ${type}`);
   }
 
@@ -233,7 +225,7 @@ async function apiUpdate<T extends object>(
   const json = await res.json().catch(() => null);
 
   if (!res.ok || json?.success === false) {
-    console.warn(`UPDATE ${type} ERROR:`, json);
+    console.error(`UPDATE ${type} ERROR:`, json);
     throw new Error(json?.message || `Failed to update ${type}`);
   }
 
@@ -252,7 +244,7 @@ async function apiDelete(type: MenuEntity, id: string): Promise<void> {
   const json = await res.json().catch(() => null);
 
   if (!res.ok || json?.success === false) {
-    console.warn(`DELETE ${type} ERROR:`, json);
+    console.error(`DELETE ${type} ERROR:`, json);
     throw new Error(json?.message || `Failed to delete ${type}`);
   }
 }
@@ -309,6 +301,71 @@ function getCategoryStoreId(category: unknown) {
     normalizeStoreValue(obj.storeSlug) ||
     normalizeStoreValue(obj.store)
   );
+}
+
+function getCategoryRowKeys(category: unknown) {
+  if (!category || typeof category !== "object") return [];
+
+  const obj = category as {
+    storeConfigId?: unknown;
+    configId?: unknown;
+    _id?: unknown;
+    id?: unknown;
+    categoryId?: unknown;
+    storeId?: unknown;
+    name?: unknown;
+    categoryName?: unknown;
+    slug?: unknown;
+  };
+
+  const rowId = String(obj.storeConfigId || obj.configId || "").trim();
+  const storeId = normalizeStoreValue(obj.storeId).toLowerCase();
+  const name = String(
+    obj.name || obj.categoryName || obj.slug || obj.categoryId || obj._id || obj.id || ""
+  )
+    .trim()
+    .toLowerCase();
+  const fallbackKey = [storeId, name].filter(Boolean).join("|");
+
+  return [rowId, fallbackKey].filter(Boolean);
+}
+
+function sameCategoryRow(first: unknown, second: unknown) {
+  const firstKeys = getCategoryRowKeys(first);
+  const secondKeys = getCategoryRowKeys(second);
+
+  return firstKeys.some((key) => secondKeys.includes(key));
+}
+
+function upsertCategoryRows(currentRows: Category[], nextRows: Category[]) {
+  if (!nextRows.length) return currentRows;
+
+  const mergedRows = [...currentRows];
+
+  nextRows.forEach((nextRow) => {
+    const existingIndex = mergedRows.findIndex((currentRow) =>
+      sameCategoryRow(currentRow, nextRow)
+    );
+
+    if (existingIndex >= 0) {
+      mergedRows[existingIndex] = {
+        ...(mergedRows[existingIndex] as object),
+        ...(nextRow as object),
+      } as Category;
+
+      return;
+    }
+
+    mergedRows.push(nextRow);
+  });
+
+  return sortBySortOrder(mergedRows);
+}
+
+function isDuplicateCategoryError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  return message.toLowerCase().includes("category already exists");
 }
 
 function getNextCategorySortOrder(
@@ -1045,15 +1102,19 @@ export function useMenuCrud() {
   };
 
   const addCategory = async (category: CategoryWithMultiStore) => {
+    const oldCategories = categories;
+
     const storeIds = Array.isArray(category.storeIds)
-      ? category.storeIds.filter(Boolean)
+      ? category.storeIds
+          .map((item) => normalizeStoreValue(item))
+          .filter((item) => item && item !== "all")
       : [];
 
     const targetStoreIds = Array.from(
       new Set(
         storeIds.length
           ? storeIds
-          : ([category.storeId].filter(Boolean) as string[])
+          : ([normalizeStoreValue(category.storeId)].filter(Boolean) as string[])
       )
     ) as string[];
 
@@ -1064,68 +1125,73 @@ export function useMenuCrud() {
     const baseCategory = { ...category };
     delete baseCategory.storeIds;
 
-    const categoryPayloads: Category[] = [];
+    const createdAt = Date.now();
 
-    targetStoreIds.forEach((storeId) => {
+    const categoryPayloads: Category[] = targetStoreIds.map((storeId, index) => {
       const nextSortOrder = getNextCategorySortOrder(
         storeId,
         categories,
-        categoryPayloads
+        []
       );
 
-      categoryPayloads.push(
-        normalizeCategory({
-          ...baseCategory,
-          storeId,
-          sortOrder: nextSortOrder,
-        }) as Category
-      );
+      return normalizeCategory({
+        ...baseCategory,
+        id: String((baseCategory as any).id || `temp-category-${createdAt}-${index}`),
+        storeId,
+        sortOrder: Number(baseCategory.sortOrder || nextSortOrder),
+      }) as Category;
     });
 
-    const tempCategories = categoryPayloads.map((payload, index) => {
-      const tempId = `temp-category-${Date.now()}-${index}`;
-      return addTempId(payload, tempId) as Category;
-    });
+    const optimisticCategories = categoryPayloads.map((payload, index) =>
+      addTempId(payload, `temp-category-${createdAt}-${index}`) as Category
+    );
 
-    setCategories((prev) => sortBySortOrder([...prev, ...tempCategories]));
+    // Add all selected stores to UI at once.
+    // Do not update state after each API request, otherwise table briefly shows only the first store.
+    setCategories((prev) => upsertCategoryRows(prev, optimisticCategories));
 
-    try {
-      const savedCategories = await Promise.all(
-        categoryPayloads.map(async (payload, index) => {
-          const savedCategory = normalizeCategory(
-            await apiCreate<Category>("categories", payload)
-          ) as Category;
+    const savedCategories: Category[] = [];
+    let lastNonDuplicateError: unknown = null;
 
-          const tempId = getMongoId(tempCategories[index]);
+    for (const payload of categoryPayloads) {
+      try {
+        const savedCategory = normalizeCategory(
+          await apiCreate<Category>("categories", payload)
+        ) as Category;
 
-          setCategories((prev) =>
-            sortBySortOrder(replaceTempOrMerge(prev, savedCategory, tempId))
-          );
+        savedCategories.push(savedCategory);
+      } catch (error) {
+        if (isDuplicateCategoryError(error)) {
+          continue;
+        }
 
-          return savedCategory;
-        })
-      );
-
-      return savedCategories;
-    } catch (error) {
-      const tempIds = tempCategories.map((item) => getMongoId(item));
-
-      setCategories((prev) =>
-        prev.filter((item) => !tempIds.includes(getMongoId(item)))
-      );
-
-      throw error;
+        lastNonDuplicateError = error;
+        break;
+      }
     }
+
+    if (lastNonDuplicateError) {
+      setCategories(oldCategories);
+      throw lastNonDuplicateError;
+    }
+
+    const finalCategories = savedCategories.length
+      ? savedCategories
+      : optimisticCategories;
+
+    // Replace/merge once after all store configs are saved.
+    setCategories((prev) => upsertCategoryRows(prev, finalCategories));
+
+    return finalCategories;
   };
 
   const updateCategory = async (category: Category) => {
     const payload = normalizeCategory(category) as Category;
-    const categoryId = getMongoId(payload);
     const oldCategories = categories;
 
     setCategories((prev) =>
       sortBySortOrder(
-        prev.map((item) => (getMongoId(item) === categoryId ? payload : item))
+        prev.map((item) => (sameCategoryRow(item, payload) ? payload : item))
       )
     );
 
@@ -1134,9 +1200,7 @@ export function useMenuCrud() {
         await apiUpdate<Category>("categories", payload)
       ) as Category;
 
-      setCategories((prev) =>
-        sortBySortOrder(updateLocalItem(prev, savedCategory))
-      );
+      setCategories((prev) => upsertCategoryRows(prev, [savedCategory]));
 
       return savedCategory;
     } catch (error) {
@@ -1146,47 +1210,37 @@ export function useMenuCrud() {
   };
 
   const deleteCategory = async (id: string) => {
-  const oldCategories = categories;
-  const cleanId = String(id || "").trim();
+    const oldCategories = categories;
+    const cleanId = String(id || "").trim();
 
-  if (!cleanId) {
-    throw new Error("Missing category ID for delete");
-  }
+    if (!cleanId) {
+      throw new Error("Missing category ID for delete");
+    }
 
-  // Instant frontend remove
-  setCategories((prev) =>
-    prev.filter((item: any) => {
-      const itemIds = [
-        getMongoId(item),
-        item.storeConfigId,
-        item.configId,
-        item._id,
-        item.id,
-        item.categoryId,
-        item.slug,
-        item.name,
-      ]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean);
+    setCategories((prev) =>
+      prev.filter((item: any) => {
+        const itemIds = [
+          item.storeConfigId,
+          item.configId,
+          getMongoId(item),
+          item._id,
+          item.id,
+          item.categoryId,
+        ]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean);
 
-      return !itemIds.includes(cleanId);
-    })
-  );
-
-  try {
-    await apiDelete("categories", cleanId);
-
-    // Final sync from database so UI updates without browser refresh
-    const freshCategories = await apiGet<Category>("categories");
-
-    setCategories(
-      sortBySortOrder(freshCategories.map(normalizeCategory) as Category[])
+        return !itemIds.includes(cleanId);
+      })
     );
-  } catch (error) {
-    setCategories(oldCategories);
-    throw error;
-  }
-};
+
+    try {
+      await apiDelete("categories", cleanId);
+    } catch (error) {
+      setCategories(oldCategories);
+      throw error;
+    }
+  };
 
   const addModifier = async (modifier: ModifierGroupPayload) => {
     const nextSortOrder = getNextModifierSortOrder(modifierGroups);
