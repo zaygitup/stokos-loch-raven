@@ -19,6 +19,7 @@ function cleanBoolean(value: unknown, fallback = true) {
 
   if (typeof value === "string") {
     const lower = value.toLowerCase().trim();
+
     if (["true", "yes", "1", "active"].includes(lower)) return true;
     if (["false", "no", "0", "inactive", "off"].includes(lower)) return false;
   }
@@ -93,11 +94,18 @@ UpsellStoreConfigSchema.pre("validate", function () {
 
 UpsellStoreConfigSchema.index(
   { upsellId: 1, storeId: 1 },
-  { unique: true }
+  { unique: true, name: "unique_upsell_store_config" }
 );
 
 UpsellStoreConfigSchema.index({ storeId: 1, categoryId: 1, status: 1 });
 UpsellStoreConfigSchema.index({ storeId: 1, available: 1, status: 1 });
+
+if (
+  process.env.NODE_ENV === "development" &&
+  mongoose.models.UpsellStoreConfig
+) {
+  delete mongoose.models.UpsellStoreConfig;
+}
 
 const UpsellStoreConfig =
   mongoose.models.UpsellStoreConfig ||
