@@ -20,8 +20,8 @@ function cleanString(value: unknown) {
   return String(value || "").trim();
 }
 
-function slugify(value: string) {
-  return value
+function slugify(value: unknown) {
+  return String(value || "")
     .toLowerCase()
     .trim()
     .replace(/&/g, "and")
@@ -33,41 +33,50 @@ function uniqueBySlug(categories: FrontendMenuCategory[]) {
   const seen = new Set<string>();
 
   return categories.filter((category) => {
-    if (!category.slug || seen.has(category.slug)) return false;
-    seen.add(category.slug);
+    const slug = slugify(category.slug || category.id || category.name);
+
+    if (!slug || seen.has(slug)) return false;
+    seen.add(slug);
+    category.id = slug;
+    category.slug = slug;
     return true;
   });
+}
+
+function buildStoreKeys(store: any, storeSlug: string) {
+  return Array.from(
+    new Set(
+      [
+        store?._id ? String(store._id) : "",
+        store?.id ? String(store.id) : "",
+        store?.slug ? String(store.slug) : "",
+        storeSlug,
+      ]
+        .map((value) => cleanString(value).toLowerCase())
+        .filter(Boolean)
+    )
+  );
 }
 
 async function getStoreMenuCategoriesFromDB(
   storeSlug: string
 ): Promise<FrontendMenuCategory[]> {
+  const cleanStoreSlug = cleanString(storeSlug).toLowerCase();
+
+  if (!cleanStoreSlug) return [];
+
   await connectDB();
 
   const store = await Store.findOne({
-    slug: storeSlug,
+    slug: cleanStoreSlug,
     status: "Active",
   })
-    .select({
-      id: 1,
-      slug: 1,
-      status: 1,
-    })
+    .select({ _id: 1, id: 1, slug: 1, status: 1 })
     .lean<any>();
 
-  if (!store) {
-    return [];
-  }
+  if (!store) return [];
 
-  const storeKeys = Array.from(
-    new Set(
-      [
-        store._id ? String(store._id) : "",
-        store.id ? String(store.id) : "",
-        store.slug ? String(store.slug) : "",
-      ].filter(Boolean)
-    )
-  );
+  const storeKeys = buildStoreKeys(store, cleanStoreSlug);
 
   const configs = await CategoryStoreConfig.find({
     storeId: { $in: storeKeys },
@@ -93,6 +102,8 @@ async function getStoreMenuCategoriesFromDB(
   })
     .select({
       categoryId: 1,
+      categoryName: 1,
+      categorySlug: 1,
       storeId: 1,
       status: 1,
       available: 1,
@@ -104,16 +115,10 @@ async function getStoreMenuCategoriesFromDB(
     .lean<any[]>();
 
   const categoryIds = Array.from(
-    new Set(
-      configs
-        .map((config) => cleanString(config.categoryId))
-        .filter(Boolean)
-    )
+    new Set(configs.map((config) => cleanString(config.categoryId)).filter(Boolean))
   );
 
-  if (!categoryIds.length) {
-    return [];
-  }
+  if (!categoryIds.length) return [];
 
   const objectIds = categoryIds
     .filter((id) => mongoose.Types.ObjectId.isValid(id))
@@ -133,6 +138,7 @@ async function getStoreMenuCategoriesFromDB(
     $or: categoryOrQuery,
   })
     .select({
+      _id: 1,
       id: 1,
       name: 1,
       slug: 1,
@@ -160,8 +166,8 @@ async function getStoreMenuCategoriesFromDB(
 
       if (!category) return null;
 
-      const name = cleanString(category.name);
-      const slug = cleanString(category.slug) || slugify(name);
+      const name = cleanString(category.name || config.categoryName);
+      const slug = slugify(category.slug || config.categorySlug || name);
 
       if (!name || !slug) return null;
 
@@ -171,7 +177,7 @@ async function getStoreMenuCategoriesFromDB(
         slug,
         description: cleanString(category.description),
         image: cleanString(category.image),
-        sortOrder: Number(config.sortOrder || category.sortOrder || 0),
+        sortOrder: Number(config.sortOrder ?? category.sortOrder ?? 0),
       };
     })
     .filter(Boolean) as FrontendMenuCategory[];
@@ -183,9 +189,9 @@ async function getStoreMenuCategoriesFromDB(
 
 export const getStoreMenuCategories = unstable_cache(
   getStoreMenuCategoriesFromDB,
-  ["store-menu-categories-v4"],
+  ["store-menu-categories-v5"],
   {
-    revalidate: 60,
+    revalidate: 30,
     tags: ["store-menu-categories"],
   }
 );

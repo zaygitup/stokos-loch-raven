@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MenuSection from "@/components/menusection";
 import { useSearchStore } from "@/lib/data/useSearchStore";
 
@@ -15,9 +15,12 @@ export type MenuCategoryTab = {
 
 type MenuSectionsClientProps = {
   storeSlug: string;
-  categories: MenuCategoryTab[];
-  initialProducts: any[];
+  categories?: MenuCategoryTab[] | null;
+  initialProducts?: any[] | null;
 };
+
+// ✅ 60s polling — menu doesn't change every 10 seconds
+const POLLING_MS = 60_000;
 
 const POPULAR_CATEGORY: MenuCategoryTab = {
   id: "trending",
@@ -29,395 +32,290 @@ const POPULAR_CATEGORY: MenuCategoryTab = {
 };
 
 const MENU_COUPON_CATEGORY_KEYS = new Set([
-  "menu-coupons",
-  "menu-coupon",
-  "menu-coupon-category",
-  "coupons",
-  "coupon",
-  "deals",
-  "deal",
-  "menu-deals",
-  "menu-deal",
+  "menu-coupons","menu-coupon","menu-coupon-category",
+  "coupons","coupon","deals","deal","menu-deals","menu-deal",
 ]);
 
 function slugify(value: unknown) {
-  return String(value || "")
-    .toLowerCase()
-    .trim()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return String(value || "").toLowerCase().trim()
+    .replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
-
-function cleanString(value: unknown) {
-  return String(value || "").trim();
+function cleanString(value: unknown) { return String(value || "").trim(); }
+function cleanNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const n = Number(cleanString(value).replace(/[^0-9.-]/g, "") || 0);
+  return Number.isFinite(n) ? n : 0;
 }
-
 function cleanBoolean(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value === 1;
-
   if (typeof value === "string") {
-    const lower = value.toLowerCase().trim();
-
-    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) {
-      return true;
-    }
-
-    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) {
-      return false;
-    }
+    const l = value.toLowerCase().trim();
+    if (["true","yes","1","active","popular","featured"].includes(l)) return true;
+    if (["false","no","0","inactive","off","hidden"].includes(l)) return false;
   }
-
   return fallback;
 }
 
-function cleanNumber(value: unknown) {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
-  }
-
-  const raw = cleanString(value).replace(/[^0-9.]/g, "");
-  const number = Number(raw || 0);
-
-  return Number.isFinite(number) ? number : 0;
+function getArrayFromApi(data: any, key: "products" | "categories") {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.[key])) return data[key];
+  if (key === "categories" && Array.isArray(data?.menuCategories)) return data.menuCategories;
+  if (key === "products" && Array.isArray(data?.menuProducts)) return data.menuProducts;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
 }
 
-function normalizeStoreId(value: unknown) {
-  return cleanString(value).toLowerCase();
-}
-
-function isPopularCategory(category: Partial<MenuCategoryTab>) {
-  const id = slugify(category.id);
-  const slug = slugify(category.slug);
-  const name = slugify(category.name);
-
+function isExpectedNetworkError(error: any) {
+  const message = String(error?.message || error || "").toLowerCase();
   return (
-    id === "trending" ||
-    slug === "trending" ||
-    name === "trending" ||
-    name === "popular-menu-items" ||
-    name === "popular-items" ||
-    name === "popular-menu-item"
+    error?.name === "AbortError" ||
+    message.includes("failed to fetch") ||
+    message.includes("network error") ||
+    message.includes("load failed")
   );
 }
 
-function isMenuCouponsCategory(category: Partial<MenuCategoryTab>) {
-  const keys = [category.id, category.slug, category.name]
-    .filter(Boolean)
-    .map((value) => slugify(value));
-
-  return keys.some((key) => MENU_COUPON_CATEGORY_KEYS.has(key));
+function isPopularCategory(category: Partial<MenuCategoryTab>) {
+  const id = slugify(category.id); const slug = slugify(category.slug); const name = slugify(category.name);
+  return id === "trending" || slug === "trending" || name === "trending" ||
+    name === "popular-menu-items" || name === "popular-items" || name === "popular-menu-item";
 }
-
-function normalizeCategory(category: MenuCategoryTab): MenuCategoryTab {
+function isMenuCouponsCategory(category: Partial<MenuCategoryTab>) {
+  return [category.id, category.slug, category.name].filter(Boolean)
+    .map((v) => slugify(v)).some((key) => MENU_COUPON_CATEGORY_KEYS.has(key));
+}
+function normalizeCategory(category: Partial<MenuCategoryTab>): MenuCategoryTab {
   const name = cleanString(category.name);
-  const slug = cleanString(category.slug) || slugify(name);
-
+  const cleanSlug = slugify(category.slug || category.id || name);
+  return { id: cleanSlug, slug: cleanSlug, name, description: cleanString(category.description), image: cleanString(category.image), sortOrder: cleanNumber(category.sortOrder) };
+}
+function normalizeRealCategories(categories: Partial<MenuCategoryTab>[]) {
+  const seen = new Set<string>();
+  return (Array.isArray(categories) ? categories : [])
+    .map((c) => normalizeCategory(c))
+    .filter((c) => {
+      if (!c.id || !c.name) return false;
+      if (isPopularCategory(c)) return false;
+      if (isMenuCouponsCategory(c)) return false;
+      const key = slugify(c.slug || c.id || c.name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key); return true;
+    })
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+function getProductCategoryName(product: any) {
+  if (typeof product?.category === "string") return product.category;
+  return cleanString(product?.categoryName || product?.categoryTitle || product?.category?.name || product?.category?.title || "");
+}
+function getProductCategorySlug(product: any) {
+  if (typeof product?.category === "string") return slugify(product.category);
+  return slugify(product?.categorySlug || product?.categoryId || product?.category?.slug || product?.category?.id || product?.category?._id || getProductCategoryName(product));
+}
+function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
+  const seen = new Set<string>();
+  return (Array.isArray(products) ? products : [])
+    .map((p) => {
+      const categoryName = getProductCategoryName(p);
+      const categorySlug = getProductCategorySlug(p);
+      return { id: categorySlug, slug: categorySlug, name: categoryName || categorySlug, description: "", image: "", sortOrder: cleanNumber(p?.categorySortOrder || 9999) };
+    })
+    .filter((c) => {
+      if (!c.id || !c.name) return false;
+      if (isPopularCategory(c)) return false;
+      if (isMenuCouponsCategory(c)) return false;
+      if (seen.has(c.id)) return false;
+      seen.add(c.id); return true;
+    });
+}
+function buildMenuCategories(inputCategories: Partial<MenuCategoryTab>[], products: any[]) {
+  const seen = new Set<string>();
+  const realCategories = [
+    ...normalizeRealCategories(inputCategories),
+    ...deriveCategoriesFromProducts(products),
+  ].filter((c) => {
+    const key = slugify(c.slug || c.id || c.name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+  return [POPULAR_CATEGORY, ...realCategories];
+}
+function getCategorySectionId(category: MenuCategoryTab) {
+  return slugify(category.slug || category.id || category.name);
+}
+function getProductCategoryKeys(product: any) {
+  const categoryString = typeof product?.category === "string" ? product.category : "";
+  return [product?.categoryId, product?.categorySlug, product?.categoryName, product?.categoryTitle, categoryString, product?.category?.id, product?.category?._id, product?.category?.slug, product?.category?.name, product?.category?.title]
+    .filter(Boolean).map((v) => slugify(v));
+}
+function productBelongsToCategory(product: any, category: MenuCategoryTab) {
+  const categoryKeys = [category.id, category.slug, category.name, getCategorySectionId(category)].filter(Boolean).map((v) => slugify(v));
+  return categoryKeys.some((key) => getProductCategoryKeys(product).includes(key));
+}
+function isProductPopular(product: any) {
+  return cleanBoolean(product?.isPopular) || cleanBoolean(product?.showInPopular) || cleanBoolean(product?.popular) || cleanBoolean(product?.featured);
+}
+function isProductActive(product: any) {
+  const status = cleanString(product?.status || "Active").toLowerCase();
+  return !status || status === "active" || status === "published" || status === "available";
+}
+function normalizeProduct(product: any, storeSlug: string) {
+  const title = cleanString(product?.title || product?.name || "Menu Item");
+  const productId = cleanString(product?.id || product?.productId || product?._id || product?.slug || slugify(title));
+  const categoryName = getProductCategoryName(product);
+  const categorySlug = getProductCategorySlug(product);
+  const price = cleanNumber(product?.price ?? product?.numericPrice);
   return {
-    id: cleanString(category.id || slug),
-    name,
-    slug,
-    description: cleanString(category.description),
-    image: cleanString(category.image),
-    sortOrder: Number(category.sortOrder || 0),
+    ...product, id: productId, productId: cleanString(product?.productId || productId),
+    slug: cleanString(product?.slug || slugify(title)), title, name: title,
+    description: cleanString(product?.description),
+    image: cleanString(product?.image || "/images/placeholder-food.png"),
+    price, numericPrice: cleanNumber(product?.numericPrice ?? price),
+    categoryId: cleanString(product?.categoryId || categorySlug), categoryName, categorySlug,
+    category: categorySlug || categoryName, storeSlug: cleanString(product?.storeSlug || storeSlug),
+    sortOrder: cleanNumber(product?.sortOrder), isPopular: isProductPopular(product),
+    showInPopular: isProductPopular(product), status: cleanString(product?.status || "Active"),
   };
 }
-
-function normalizeRealCategories(categories: MenuCategoryTab[]) {
-  const seen = new Set<string>();
-
-  return (categories || [])
-    .map(normalizeCategory)
-    .filter((category) => {
-      if (!category.id || !category.name) return false;
-      if (isPopularCategory(category)) return false;
-      if (isMenuCouponsCategory(category)) return false;
-
-      const key = slugify(category.slug || category.name || category.id);
-
-      if (!key) return false;
-      if (seen.has(key)) return false;
-
-      seen.add(key);
+function normalizeProducts(products: any[], storeSlug: string) {
+  return (Array.isArray(products) ? products : [])
+    .map((p) => normalizeProduct(p, storeSlug))
+    .filter((p) => {
+      if (!p.id || !p.title) return false;
+      if (!isProductActive(p)) return false;
+      const categoryKey = slugify(p.categorySlug || p.categoryName || p.category);
+      if (MENU_COUPON_CATEGORY_KEYS.has(categoryKey)) return false;
       return true;
     })
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 }
-
-function buildMenuCategories(categories: MenuCategoryTab[]) {
-  return [POPULAR_CATEGORY, ...normalizeRealCategories(categories || [])];
+function productsChanged(oldProducts: any[], newProducts: any[]) {
+  const sig = (arr: any[]) => JSON.stringify(arr.map((p) => ({ id: p.id, productId: p.productId, title: p.title, price: p.price, categoryId: p.categoryId, categoryName: p.categoryName, categorySlug: p.categorySlug, isPopular: p.isPopular, showInPopular: p.showInPopular, sortOrder: p.sortOrder, status: p.status, updatedAt: p.updatedAt })));
+  return sig(oldProducts) !== sig(newProducts);
+}
+function categoriesChanged(oldCategories: MenuCategoryTab[], newCategories: MenuCategoryTab[]) {
+  return JSON.stringify(oldCategories) !== JSON.stringify(newCategories);
 }
 
-function getCategorySectionId(category: MenuCategoryTab) {
-  return slugify(category.slug || category.name || category.id);
-}
-
-function getMatchingStoreConfig(product: any, storeSlug: string) {
-  const cleanStoreSlug = normalizeStoreId(storeSlug);
-  const configs = Array.isArray(product?.storeConfigs) ? product.storeConfigs : [];
-
-  if (!configs.length) return product?.storeConfig || null;
-
-  const matched = configs.find((config: any) => {
-    const configStoreId = normalizeStoreId(
-      config?.storeId || config?.storeSlug || config?.store
-    );
-
-    return configStoreId === cleanStoreSlug;
-  });
-
-  return matched || product?.storeConfig || configs[0] || null;
-}
-
-function getProductCategoryKeys(product: any) {
-  const storeConfig = product?.storeConfig || null;
-
-  return [
-    product?.categoryId,
-    product?.categoryID,
-    product?.category_id,
-    product?.category,
-    product?.categorySlug,
-    product?.categoryName,
-    product?.categoryTitle,
-
-    storeConfig?.categoryId,
-    storeConfig?.categorySlug,
-    storeConfig?.categoryName,
-
-    product?.category?.id,
-    product?.category?._id,
-    product?.category?.slug,
-    product?.category?.name,
-  ]
-    .filter(Boolean)
-    .map((value) => slugify(value));
-}
-
-function productBelongsToCategory(product: any, category: MenuCategoryTab) {
-  const categoryKeys = [
-    category.id,
-    category.slug,
-    category.name,
-    slugify(category.id),
-    slugify(category.slug || ""),
-    slugify(category.name),
-  ]
-    .filter(Boolean)
-    .map((value) => slugify(value));
-
-  const productCategoryKeys = getProductCategoryKeys(product);
-
-  return categoryKeys.some((key) => productCategoryKeys.includes(key));
-}
-
-function isMenuCouponProduct(product: any) {
-  const productCategoryKeys = getProductCategoryKeys(product);
-
-  return productCategoryKeys.some((key) => MENU_COUPON_CATEGORY_KEYS.has(key));
-}
-
-function isProductPopular(product: any, storeSlug: string) {
-  const matchedStoreConfig = getMatchingStoreConfig(product, storeSlug);
-  const storeConfigs = Array.isArray(product?.storeConfigs) ? product.storeConfigs : [];
-
-  const matchedStorePopular = matchedStoreConfig
-    ? cleanBoolean(matchedStoreConfig.isPopular) ||
-      cleanBoolean(matchedStoreConfig.showInPopular)
-    : false;
-
-  const anyStorePopular = storeConfigs.some((config: any) => {
-    const configStoreId = normalizeStoreId(
-      config?.storeId || config?.storeSlug || config?.store
-    );
-    const sameStore = !storeSlug || configStoreId === normalizeStoreId(storeSlug);
-
-    return (
-      sameStore &&
-      (cleanBoolean(config?.isPopular) || cleanBoolean(config?.showInPopular))
-    );
-  });
-
-  return (
-    matchedStorePopular ||
-    anyStorePopular ||
-    cleanBoolean(product?.isPopular) ||
-    cleanBoolean(product?.popular) ||
-    cleanBoolean(product?.isFeatured) ||
-    cleanBoolean(product?.featured) ||
-    cleanBoolean(product?.showInPopular) ||
-    cleanBoolean(product?.showInPopularMenu) ||
-    cleanBoolean(product?.store?.isPopular)
-  );
-}
-
-function normalizeProduct(product: any, storeSlug: string) {
-  const storeConfig = getMatchingStoreConfig(product, storeSlug);
-
-  return {
-    ...product,
-    storeConfig,
-
-    id: cleanString(product?.id || product?._id),
-    _id: product?._id,
-
-    title: cleanString(product?.title || product?.name),
-    name: cleanString(product?.name || product?.title),
-
-    isPopular: isProductPopular(product, storeSlug),
-
-    categoryId: cleanString(
-      storeConfig?.categoryId ||
-        product?.categoryId ||
-        product?.categoryID ||
-        product?.category_id ||
-        product?.category?.id ||
-        product?.category?._id
-    ),
-
-    categorySlug: cleanString(
-      storeConfig?.categorySlug ||
-        product?.categorySlug ||
-        product?.category?.slug ||
-        product?.category ||
-        product?.categoryName
-    ),
-
-    categoryName: cleanString(
-      storeConfig?.categoryName ||
-        product?.categoryName ||
-        product?.categoryTitle ||
-        product?.category?.name ||
-        product?.category
-    ),
-
-    price: cleanNumber(storeConfig?.price ?? product?.price ?? 0),
-    sizes: Array.isArray(storeConfig?.sizes) ? storeConfig.sizes : product?.sizes || [],
-    relatedUpsells: Array.isArray(storeConfig?.relatedUpsells)
-      ? storeConfig.relatedUpsells
-      : product?.relatedUpsells || [],
-
-    modifierGroups:
-      Array.isArray(storeConfig?.modifierGroups) && storeConfig.modifierGroups.length > 0
-        ? storeConfig.modifierGroups
-        : Array.isArray(product?.modifierGroups) && product.modifierGroups.length > 0
-        ? product.modifierGroups
-        : Array.isArray(product?.attachedModifierGroups)
-        ? product.attachedModifierGroups
-        : [],
-  };
-}
-
-function searchProduct(product: any, query: string) {
-  const searchableText = [
-    product?.title,
-    product?.name,
-    product?.description,
-    product?.category,
-    product?.categoryId,
-    product?.categorySlug,
-    product?.categoryName,
-    product?.categoryTitle,
-    product?.slug,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return searchableText.includes(query);
+// ✅ NO cache: "no-store", NO ?t=Date.now() — let s-maxage=30 work
+async function fetchJson(url: string, signal?: AbortSignal) {
+  const response = await fetch(url, { method: "GET", signal });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return response.json();
 }
 
 export default function MenuSectionsClient({
   storeSlug,
-  categories,
-  initialProducts,
+  categories = [],
+  initialProducts = [],
 }: MenuSectionsClientProps) {
-  const searchQuery = useSearchStore((state) => state.searchQuery);
+  const { searchQuery } = useSearchStore();
+  const controllerRef = useRef<AbortController | null>(null);
+  const hasFetchedRef = useRef(false);
 
-  const liveCategories = useMemo(
-    () => buildMenuCategories(categories || []),
-    [categories]
-  );
-
-  const liveProducts = useMemo(
-    () => (initialProducts || []).map((product) => normalizeProduct(product, storeSlug)),
+  const initialNormalizedProducts = useMemo(
+    () => normalizeProducts(initialProducts || [], storeSlug),
     [initialProducts, storeSlug]
   );
+  const initialMenuCategories = useMemo(
+    () => buildMenuCategories(categories || [], initialNormalizedProducts),
+    [categories, initialNormalizedProducts]
+  );
 
-  const filteredProducts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  const [menuCategories, setMenuCategories] = useState<MenuCategoryTab[]>(initialMenuCategories);
+  const [products, setProducts] = useState<any[]>(initialNormalizedProducts);
+  const [loading, setLoading] = useState(initialNormalizedProducts.length === 0);
 
-    if (!query) return liveProducts;
+  useEffect(() => { setProducts(initialNormalizedProducts); }, [initialNormalizedProducts]);
+  useEffect(() => { setMenuCategories(initialMenuCategories); }, [initialMenuCategories]);
 
-    return liveProducts.filter((product) => searchProduct(product, query));
-  }, [liveProducts, searchQuery]);
+  const loadLatestMenu = useCallback(async () => {
+    if (!storeSlug) return;
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
 
-  const normalMenuProducts = useMemo(() => {
-    return filteredProducts.filter((product) => !isMenuCouponProduct(product));
-  }, [filteredProducts]);
+    try {
+      const [categoriesData, productsData] = await Promise.all([
+        fetchJson(`/api/store/${encodeURIComponent(storeSlug)}/menu-categories`, controller.signal),
+        fetchJson(`/api/store/${encodeURIComponent(storeSlug)}/menu-products`, controller.signal),
+      ]);
 
-  const visibleSections = useMemo(() => {
-    return liveCategories
-      .map((category) => {
-        const sectionProducts = isPopularCategory(category)
-          ? normalMenuProducts.filter((product) => product.isPopular === true)
-          : normalMenuProducts.filter((product) =>
-              productBelongsToCategory(product, category)
-            );
+      if (controller.signal.aborted) return;
 
-        return {
-          category,
-          products: sectionProducts,
-        };
-      })
-      .filter((section) => section.products.length > 0);
-  }, [liveCategories, normalMenuProducts]);
+      const latestProducts = normalizeProducts(getArrayFromApi(productsData, "products"), storeSlug);
+      const latestCategories = buildMenuCategories(getArrayFromApi(categoriesData, "categories"), latestProducts);
 
-  const hasSearch = searchQuery.trim().length > 0;
+      setProducts((cur) => productsChanged(cur, latestProducts) ? latestProducts : cur);
+      setMenuCategories((cur) => categoriesChanged(cur, latestCategories) ? latestCategories : cur);
+    } catch (error: any) {
+      if (isExpectedNetworkError(error)) return;
+      console.error("Menu refresh failed:", error);
+    } finally {
+      if (!hasFetchedRef.current) {
+        hasFetchedRef.current = true;
+        setLoading(false);
+      }
+    }
+  }, [storeSlug]);
 
-  const hasSearchResults =
-    visibleSections.reduce((total, section) => {
-      return total + section.products.length;
-    }, 0) > 0;
+  useEffect(() => {
+    if (!storeSlug) return;
+    loadLatestMenu();
+    const interval = window.setInterval(loadLatestMenu, POLLING_MS);
+    return () => { controllerRef.current?.abort(); window.clearInterval(interval); };
+  }, [storeSlug, loadLatestMenu]);
+
+  const visibleCategories = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return menuCategories;
+    return menuCategories.filter((category) => {
+      if (isPopularCategory(category)) {
+        return products.some((p) => isProductPopular(p) && cleanString(p.title || p.name).toLowerCase().includes(q));
+      }
+      return products.some((p) => productBelongsToCategory(p, category) && cleanString(p.title || p.name).toLowerCase().includes(q));
+    });
+  }, [menuCategories, products, searchQuery]);
+
+  if (loading && products.length === 0) {
+    return (
+      <section className="mx-auto w-full max-w-[1600px] px-4 py-10 sm:px-5 md:px-6 xl:px-10">
+        <div className="rounded-3xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-[#121212]">
+          <p className="text-sm font-black uppercase tracking-widest text-zinc-500">Loading menu...</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!products.length) {
+    return (
+      <section className="mx-auto w-full max-w-[1600px] px-4 py-10 sm:px-5 md:px-6 xl:px-10">
+        <div className="rounded-3xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-[#121212]">
+          <p className="text-sm font-black uppercase tracking-widest text-zinc-500">No products found for this store.</p>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <div className="w-full">
-      {hasSearch && (
-        <div className="mx-auto w-full max-w-[1400px] px-4 pt-6 md:px-6">
-          <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
-            Search results for{" "}
-            <span className="font-black text-black dark:text-white">
-              “{searchQuery.trim()}”
-            </span>
-          </p>
-        </div>
-      )}
-
-      {hasSearch && !hasSearchResults && (
-        <div className="mx-auto w-full max-w-[1400px] px-4 py-16 text-center md:px-6">
-          <h2 className="text-2xl font-black text-black dark:text-white">
-            No menu items found
-          </h2>
-
-          <p className="mt-2 text-sm text-zinc-500">
-            Try searching pizza, wings, subs, drinks, or another menu item.
-          </p>
-        </div>
-      )}
-
-      {visibleSections.map(({ category, products }) => {
-        const sectionId = getCategorySectionId(category);
-
+    <>
+      {visibleCategories.map((category) => {
+        const isPopular = isPopularCategory(category);
+        const sectionProducts = isPopular
+          ? products.filter((p) => isProductPopular(p))
+          : products.filter((p) => productBelongsToCategory(p, category));
+        if (!sectionProducts.length) return null;
         return (
           <MenuSection
-            key={sectionId}
-            id={sectionId}
+            key={category.id}
+            id={getCategorySectionId(category)}
             title={category.name}
-            products={products}
+            subtitle={category.description || ""}
+            products={sectionProducts}
           />
         );
       })}
-    </div>
+    </>
   );
 }

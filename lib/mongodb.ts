@@ -19,7 +19,7 @@ if (!global.mongooseCache) {
   global.mongooseCache = cached;
 }
 
-async function connectMongoDB() {
+export default async function connectMongoDB() {
   const MONGODB_URI = process.env.MONGODB_URI;
 
   if (!MONGODB_URI) {
@@ -28,20 +28,30 @@ async function connectMongoDB() {
     );
   }
 
-  if (cached.conn) {
+  if (cached.conn && mongoose.connection.readyState === 1) {
     return cached.conn;
   }
 
   if (!cached.promise) {
+    mongoose.set("strictQuery", true);
+
     cached.promise = mongoose.connect(MONGODB_URI, {
       dbName: "stokos",
       bufferCommands: false,
-      maxPoolSize: 10,
+      maxPoolSize: 20,
+      minPoolSize: 1,
+      maxIdleTimeMS: 30_000,
+      serverSelectionTimeoutMS: 10_000,
+      socketTimeoutMS: 45_000,
     });
   }
 
-  cached.conn = await cached.promise;
-  return cached.conn;
+  try {
+    cached.conn = await cached.promise;
+    return cached.conn;
+  } catch (error) {
+    cached.promise = null;
+    cached.conn = null;
+    throw error;
+  }
 }
-
-export default connectMongoDB;

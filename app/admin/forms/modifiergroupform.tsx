@@ -18,9 +18,8 @@ type StoreItem = {
   id?: string;
   name: string;
   slug: string;
-  status?: "Active" | "Inactive";
+  status?: string;
 };
-
 type CategoryItem = {
   _id?: string;
   id?: string;

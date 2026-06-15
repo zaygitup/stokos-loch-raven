@@ -33,7 +33,6 @@ function cleanRelatedUpsells(value: unknown) {
   rawItems.forEach((item: any, index) => {
     if (typeof item === "string" || typeof item === "number") {
       const upsellId = cleanString(item);
-
       if (!upsellId) return;
 
       unique.set(upsellId, {
@@ -41,7 +40,6 @@ function cleanRelatedUpsells(value: unknown) {
         name: upsellId,
         price: 0,
       });
-
       return;
     }
 
@@ -94,8 +92,6 @@ const ProductRelatedUpsellSchema = new Schema(
 
 const ProductSchema = new Schema(
   {
-    // Product Master = common/global data only.
-    // Store/category/price/size/modifier/status/sortOrder/isPopular live in ProductStoreConfig.
     name: {
       type: String,
       required: true,
@@ -112,11 +108,13 @@ const ProductSchema = new Schema(
     description: {
       type: String,
       default: "",
+      trim: true,
     },
 
     image: {
       type: String,
       default: "",
+      trim: true,
     },
 
     tags: {
@@ -127,6 +125,7 @@ const ProductSchema = new Schema(
     badge: {
       type: String,
       default: "",
+      trim: true,
     },
 
     updatedAt: {
@@ -134,8 +133,6 @@ const ProductSchema = new Schema(
       default: "Today",
     },
 
-    // Legacy fields are intentionally optional so old rows do not break during migration.
-    // New writes should not depend on these fields.
     storeId: {
       type: String,
       default: "",
@@ -181,8 +178,6 @@ const ProductSchema = new Schema(
       default: [],
     },
 
-    // New structure: [{ upsellId, name, price }].
-    // Kept on product master only for legacy compatibility; store-wise value lives in ProductStoreConfig.
     relatedUpsells: {
       type: [ProductRelatedUpsellSchema],
       default: [],
@@ -191,6 +186,7 @@ const ProductSchema = new Schema(
     upsell: {
       type: String,
       default: "",
+      trim: true,
     },
 
     status: {
@@ -225,9 +221,15 @@ ProductSchema.virtual("storeConfigs", {
 ProductSchema.pre("validate", function () {
   const doc = this as any;
 
-  if (doc.name) {
-    doc.name = cleanString(doc.name);
-  }
+  doc.name = cleanString(doc.name);
+  doc.description = cleanString(doc.description);
+  doc.image = cleanString(doc.image);
+  doc.badge = cleanString(doc.badge);
+  doc.storeId = cleanString(doc.storeId);
+  doc.category = cleanString(doc.category);
+  doc.categoryId = cleanString(doc.categoryId);
+  doc.categoryName = cleanString(doc.categoryName);
+  doc.relatedUpsells = cleanRelatedUpsells(doc.relatedUpsells);
 
   if (!doc.slug && doc.name) {
     doc.slug = slugify(doc.name);
@@ -240,15 +242,13 @@ ProductSchema.pre("validate", function () {
   if (!doc.updatedAt) {
     doc.updatedAt = "Today";
   }
-
-  doc.relatedUpsells = cleanRelatedUpsells(doc.relatedUpsells);
 });
 
-// Indexes only here. Do not also use index: true in fields above.
 ProductSchema.index({ slug: 1 });
 ProductSchema.index({ name: 1 });
-ProductSchema.index({ status: 1 });
-ProductSchema.index({ sortOrder: 1 });
+ProductSchema.index({ status: 1, sortOrder: 1 });
+ProductSchema.index({ status: 1, _id: 1 });
+ProductSchema.index({ status: 1, slug: 1 });
 
 if (process.env.NODE_ENV === "development" && mongoose.models.Product) {
   delete mongoose.models.Product;

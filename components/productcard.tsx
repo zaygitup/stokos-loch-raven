@@ -1,17 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import Image from "next/image";
 import { Plus } from "lucide-react";
-import ProductModal from "./ProductModal";
+import dynamic from "next/dynamic";
 
-export default function ProductCard({ product }: any) {
+// ✅ Lazy load ProductModal — zero cost until user clicks
+const ProductModal = dynamic(() => import("./ProductModal"), {
+  ssr: false,
+  loading: () => null,
+});
+
+const FALLBACK_IMAGE = "/images/placeholder-food.png";
+
+function cleanString(value: unknown, fallback = "") {
+  return String(value || "").trim() || fallback;
+}
+
+function cleanPrice(value: unknown) {
+  const number = Number(String(value || 0).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(number) ? number.toFixed(2) : "0.00";
+}
+
+function ProductCard({ product }: any) {
   const [showModal, setShowModal] = useState(false);
+
+  const title = cleanString(product?.title || product?.name, "Menu Item");
+  const image = cleanString(product?.image, FALLBACK_IMAGE);
+  const description = cleanString(product?.description);
+  const price = cleanPrice(product?.price ?? product?.numericPrice);
+
+  const handleOpen = useCallback(() => setShowModal(true), []);
+  const handleClose = useCallback(() => setShowModal(false), []);
 
   return (
     <>
       <div
-        onClick={() => setShowModal(true)}
+        onClick={handleOpen}
         className="
           group relative w-full h-full min-w-0
           bg-white text-black
@@ -26,7 +51,6 @@ export default function ProductCard({ product }: any) {
           overflow-hidden
         "
       >
-        {/* Image */}
         <div
           className="
             relative w-full
@@ -38,39 +62,32 @@ export default function ProductCard({ product }: any) {
           "
         >
           <Image
-            src={product.image}
-            alt={product.title}
+            src={image}
+            alt={title}
             fill
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
-            className="
-              object-cover
-              transition-transform duration-700
-              group-hover:scale-110
-            "
+            className="object-cover transition-transform duration-700 group-hover:scale-110"
           />
         </div>
 
-        {/* Content */}
         <div className="flex flex-col flex-1 px-1 pb-1 min-w-0">
-          {/* Title Fixed Height */}
-         <h3
-  className="
-    text-black dark:text-white
-    text-[14px] sm:text-[14px] md:text-[16px]
-    font-black uppercase tracking-wide
-    leading-[1.25]
-    group-hover:text-[#DA3327]
-    transition-colors
-    line-clamp-2
-    min-h-[34px]
-    overflow-hidden
-    break-words
-  "
->
-  {product.title}
-</h3>
+          <h3
+            className="
+              text-black dark:text-white
+              text-[14px] sm:text-[14px] md:text-[16px]
+              font-black uppercase tracking-wide
+              leading-[1.25]
+              group-hover:text-[#DA3327]
+              transition-colors
+              line-clamp-2
+              min-h-[34px]
+              overflow-hidden
+              break-words
+            "
+          >
+            {title}
+          </h3>
 
-          {/* Description Fixed Height */}
           <p
             className="
               hidden md:block
@@ -83,32 +100,20 @@ export default function ProductCard({ product }: any) {
               overflow-hidden
             "
           >
-            {product.description}
+            {description}
           </p>
 
-          {/* Price + Button */}
           <div className="flex items-end justify-between mt-auto pt-3 md:pt-4">
             <div className="flex items-end gap-1 min-w-0">
-              <span className="text-lg md:text-xl font-black leading-none">
-                $
-              </span>
-
-              <span
-                className="
-                  text-lg sm:text-base md:text-2xl
-                  font-black leading-none tracking-tighter
-                  text-black dark:text-white
-                "
-              >
-                {product.price}
+              <span className="text-lg md:text-xl font-black leading-none">$</span>
+              <span className="text-lg sm:text-base md:text-2xl font-black leading-none tracking-tighter text-black dark:text-white">
+                {price}
               </span>
             </div>
 
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowModal(true);
-              }}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleOpen(); }}
               className="
                 shrink-0
                 w-9 h-9 sm:w-10 sm:h-10 md:w-9 md:h-9
@@ -120,6 +125,7 @@ export default function ProductCard({ product }: any) {
                 transition-all duration-300
                 shadow-lg active:scale-90
               "
+              aria-label={`Add ${title}`}
             >
               <Plus size={18} className="md:w-6 md:h-6" strokeWidth={3} />
             </button>
@@ -127,11 +133,12 @@ export default function ProductCard({ product }: any) {
         </div>
       </div>
 
-      <ProductModal
-        product={product}
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-      />
+      {/* ✅ Modal only mounts when showModal is true */}
+      {showModal && (
+        <ProductModal product={product} isOpen={showModal} onClose={handleClose} />
+      )}
     </>
   );
 }
+
+export default memo(ProductCard);

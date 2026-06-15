@@ -15,8 +15,6 @@ function cleanString(value: unknown) {
 
 const CategorySchema = new Schema(
   {
-    // Category Master = common/global category data only.
-    // Store-wise availability/status/sortOrder now live in CategoryStoreConfig.
     name: {
       type: String,
       required: true,
@@ -42,7 +40,6 @@ const CategorySchema = new Schema(
       trim: true,
     },
 
-    // Legacy optional fields so old category routes/data do not crash during migration.
     storeId: {
       type: String,
       default: "",
@@ -93,11 +90,10 @@ CategorySchema.pre("validate", function () {
   }
 });
 
-// Indexes only here. Do not use index: true inside fields above.
 CategorySchema.index({ slug: 1 });
 CategorySchema.index({ name: 1 });
-CategorySchema.index({ status: 1 });
-CategorySchema.index({ sortOrder: 1 });
+CategorySchema.index({ status: 1, sortOrder: 1 });
+CategorySchema.index({ status: 1, slug: 1 });
 
 if (process.env.NODE_ENV === "development" && mongoose.models.Category) {
   delete mongoose.models.Category;

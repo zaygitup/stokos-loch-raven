@@ -7,6 +7,7 @@ import Category from "@/models/category";
 import CategoryStoreConfig from "@/models/categorystoreconfig";
 import ModifierGroup from "@/models/modifiergroup";
 import UpsellRule from "@/models/upsellrule";
+import { invalidateMenuProducts } from "@/lib/server/menu-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1137,6 +1138,8 @@ export async function POST(req: Request) {
     const configs = await getProductConfigs([String(product._id)]);
     const data = formatProductWithConfigs(product, configs, normalizeStoreId(body.storeId));
 
+    invalidateMenuProducts();
+
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error: any) {
     console.error("POST PRODUCT ERROR FULL:", error);
@@ -1204,6 +1207,8 @@ export async function PATCH(req: Request) {
     const configs = await getProductConfigs([String(product._id)]);
     const data = formatProductWithConfigs(product, configs, normalizeStoreId(body.storeId));
 
+    invalidateMenuProducts();
+
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error("PATCH PRODUCT ERROR FULL:", error);
@@ -1244,6 +1249,7 @@ export async function DELETE(req: Request) {
     }
 
     await ProductStoreConfig.collection.deleteMany(productIdMatch(id));
+    invalidateMenuProducts();
 
     return NextResponse.json({
       success: true,

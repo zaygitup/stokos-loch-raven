@@ -3,6 +3,10 @@ import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 import Category from "@/models/category";
 import CategoryStoreConfig from "@/models/categorystoreconfig";
+import {
+  invalidateMenuCategories,
+  invalidateMenuProducts,
+} from "@/lib/server/menu-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -442,6 +446,9 @@ export async function POST(req: Request) {
       })
     );
 
+    invalidateMenuCategories();
+    invalidateMenuProducts();
+
     return NextResponse.json(
       {
         success: true,
@@ -548,6 +555,9 @@ export async function PATCH(req: Request) {
       );
     }
 
+    invalidateMenuCategories();
+    invalidateMenuProducts();
+
     return NextResponse.json({
       success: true,
       data: formatCategoryWithConfig(category, config),
@@ -600,6 +610,8 @@ export async function DELETE(req: Request) {
       }
 
       await CategoryStoreConfig.deleteMany(duplicateCleanupQuery);
+      invalidateMenuCategories();
+      invalidateMenuProducts();
 
       return NextResponse.json({
         success: true,
@@ -622,6 +634,8 @@ export async function DELETE(req: Request) {
         ...categoryIdMatch(String(category._id)),
         storeId,
       });
+      invalidateMenuCategories();
+      invalidateMenuProducts();
 
       return NextResponse.json({
         success: true,
@@ -631,6 +645,8 @@ export async function DELETE(req: Request) {
 
     await CategoryStoreConfig.deleteMany(categoryIdMatch(String(category._id)));
     await Category.deleteOne({ _id: category._id });
+    invalidateMenuCategories();
+    invalidateMenuProducts();
 
     return NextResponse.json({
       success: true,

@@ -157,7 +157,7 @@ export default function Categories({
 
       try {
         const response = await fetch(
-          `/api/public/menu/categories/${storeSlug}?t=${Date.now()}`,
+          `/api/store/${storeSlug}/menu-categories?t=${Date.now()}`,
           {
             method: "GET",
             cache: "no-store",

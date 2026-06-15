@@ -106,13 +106,21 @@ const ProductModifierOptionSchema = new Schema(
       of: Number,
       default: {},
     },
+    price: {
+      type: Number,
+      default: 0,
+    },
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
   },
   { _id: false }
 );
 
 const ProductModifierGroupSchema = new Schema(
   {
-    modifierGroupId: { type: String, trim: true, default: "", index: true },
+    modifierGroupId: { type: String, trim: true, default: "" },
     name: { type: String, required: true, trim: true },
     required: { type: Boolean, default: false },
     minSelect: { type: Number, default: 0 },
@@ -130,7 +138,7 @@ const ProductModifierGroupSchema = new Schema(
 
 const ProductRelatedUpsellSchema = new Schema(
   {
-    upsellId: { type: String, required: true, trim: true, index: true },
+    upsellId: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
     price: { type: Number, default: 0, min: 0 },
   },
@@ -142,33 +150,28 @@ const ProductStoreConfigSchema = new Schema(
     productId: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     storeId: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     categoryId: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     categoryName: {
       type: String,
       default: "",
       trim: true,
-      index: true,
     },
     categorySlug: {
       type: String,
       default: "",
       trim: true,
       lowercase: true,
-      index: true,
     },
     price: {
       type: Number,
@@ -187,7 +190,6 @@ const ProductStoreConfigSchema = new Schema(
       type: [String],
       default: [],
     },
-
     relatedUpsells: {
       type: [ProductRelatedUpsellSchema],
       default: [],
@@ -195,43 +197,32 @@ const ProductStoreConfigSchema = new Schema(
     upsell: {
       type: String,
       default: "",
+      trim: true,
     },
-
-    // Store-wise availability. The products API mostly deletes disabled configs,
-    // but keeping the flag prevents old/alternate routes from losing state.
     isAvailable: {
       type: Boolean,
       default: true,
-      index: true,
     },
     available: {
       type: Boolean,
       default: true,
-      index: true,
     },
-
-    // Store-wise Popular Menu Items toggle.
     isPopular: {
       type: Boolean,
       default: false,
-      index: true,
     },
     showInPopular: {
       type: Boolean,
       default: false,
-      index: true,
     },
-
     status: {
       type: String,
       enum: ["Active", "Draft", "Hidden", "Inactive"],
       default: "Active",
-      index: true,
     },
     sortOrder: {
       type: Number,
       default: 0,
-      index: true,
     },
   },
   {
@@ -248,6 +239,8 @@ ProductStoreConfigSchema.pre("validate", function () {
   doc.productId = String(doc.productId || "").trim();
   doc.storeId = normalizeStoreId(doc.storeId);
   doc.categoryId = String(doc.categoryId || "").trim();
+  doc.categoryName = cleanString(doc.categoryName);
+  doc.categorySlug = cleanString(doc.categorySlug).toLowerCase();
   doc.relatedUpsells = cleanRelatedUpsells(doc.relatedUpsells);
 
   const available = cleanBoolean(doc.isAvailable, cleanBoolean(doc.available, true));
@@ -293,7 +286,7 @@ ProductStoreConfigSchema.pre("validate", function () {
 
   if (Array.isArray(doc.modifierGroups)) {
     doc.modifierGroupIds = doc.modifierGroups
-      .map((group: any) => String(group?.modifierGroupId || "").trim())
+      .map((group: any) => String(group?.modifierGroupId || group?.id || "").trim())
       .filter(Boolean);
   }
 });
@@ -302,11 +295,15 @@ ProductStoreConfigSchema.index(
   { productId: 1, storeId: 1 },
   { unique: true, name: "unique_product_store_config" }
 );
-ProductStoreConfigSchema.index({ storeId: 1, categoryId: 1, status: 1 });
-ProductStoreConfigSchema.index({ storeId: 1, sortOrder: 1 });
-ProductStoreConfigSchema.index({ storeId: 1, "relatedUpsells.upsellId": 1 });
-ProductStoreConfigSchema.index({ storeId: 1, isPopular: 1, status: 1 });
-ProductStoreConfigSchema.index({ storeId: 1, isAvailable: 1, status: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, status: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, status: 1, isAvailable: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, status: 1, available: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, status: 1, categorySlug: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, categoryId: 1, status: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, isPopular: 1, status: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, showInPopular: 1, status: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ productId: 1 });
+ProductStoreConfigSchema.index({ categoryId: 1 });
 
 if (
   process.env.NODE_ENV === "development" &&

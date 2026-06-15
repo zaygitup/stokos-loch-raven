@@ -18,43 +18,40 @@ const CategoryStoreConfigSchema = new Schema(
     categoryId: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     storeId: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     categoryName: {
       type: String,
       default: "",
       trim: true,
-      index: true,
     },
     categorySlug: {
       type: String,
       default: "",
       trim: true,
       lowercase: true,
-      index: true,
     },
     available: {
       type: Boolean,
       default: true,
-      index: true,
+    },
+    isAvailable: {
+      type: Boolean,
+      default: true,
     },
     status: {
       type: String,
       enum: ["Active", "Hidden", "Inactive"],
       default: "Active",
-      index: true,
     },
     sortOrder: {
       type: Number,
       default: 0,
-      index: true,
     },
   },
   {
@@ -76,9 +73,12 @@ CategoryStoreConfigSchema.pre("validate", function () {
 
 CategoryStoreConfigSchema.index(
   { categoryId: 1, storeId: 1 },
-  { unique: true }
+  { unique: true, name: "unique_category_store_config" }
 );
 CategoryStoreConfigSchema.index({ storeId: 1, status: 1, sortOrder: 1 });
+CategoryStoreConfigSchema.index({ storeId: 1, status: 1, available: 1, sortOrder: 1 });
+CategoryStoreConfigSchema.index({ storeId: 1, status: 1, categorySlug: 1, sortOrder: 1 });
+CategoryStoreConfigSchema.index({ categoryId: 1 });
 
 if (
   process.env.NODE_ENV === "development" &&
