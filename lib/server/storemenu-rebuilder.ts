@@ -2,23 +2,11 @@ import "server-only";
 
 import connectDB from "@/lib/mongodb";
 import StoreMenu from "@/models/storemenu";
-import { getStoreMenuCategories } from "@/lib/server/menucategories";
 import { getStoreMenuProducts } from "@/lib/server/menuproducts";
-import { clearStoreMenuSnapshotCache } from "@/lib/server/storemenu-snapshot";
 
-type MenuCategoryTab = {
+export type MenuCategoryTab = {
   id: string;
   name: string;
-  slug?: string;
-  description?: string;
-  image?: string;
-  sortOrder?: number;
-};
-
-type DbCategory = {
-  _id?: string;
-  id?: string;
-  name?: string;
   slug?: string;
   description?: string;
   image?: string;
@@ -28,8 +16,6 @@ type DbCategory = {
 type DbProduct = {
   id?: string;
   _id?: string;
-  productId?: string;
-  slug?: string;
   name?: string;
   title?: string;
   category?: any;
@@ -38,6 +24,7 @@ type DbProduct = {
   categoryTitle?: string;
   categorySlug?: string;
   categorySortOrder?: number;
+  sortOrder?: number;
   isPopular?: boolean;
   showInPopular?: boolean;
   popular?: boolean;
@@ -82,41 +69,23 @@ function cleanBoolean(value: unknown, fallback = false) {
 
   if (typeof value === "string") {
     const lower = value.toLowerCase().trim();
-
-    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) {
-      return true;
-    }
-
-    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) {
-      return false;
-    }
+    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) return true;
+    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) return false;
   }
 
   return fallback;
 }
 
 function slugify(value: unknown) {
-  return cleanString(value)
+  return String(value || "")
     .toLowerCase()
+    .trim()
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
-function toPlainJSON<T>(value: T, fallback: T): T {
-  try {
-    if (value === undefined || value === null) return fallback;
-    return JSON.parse(JSON.stringify(value)) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isPopularCategory(category: Partial<DbCategory | MenuCategoryTab>) {
+function isPopularCategory(category: Partial<MenuCategoryTab>) {
   const id = slugify(category.id);
   const slug = slugify(category.slug);
   const name = slugify(category.name);
@@ -131,7 +100,7 @@ function isPopularCategory(category: Partial<DbCategory | MenuCategoryTab>) {
   );
 }
 
-function isMenuCouponsCategory(category: Partial<DbCategory | MenuCategoryTab>) {
+function isMenuCouponsCategory(category: Partial<MenuCategoryTab>) {
   return [category.id, category.slug, category.name]
     .filter(Boolean)
     .map((value) => slugify(value))
@@ -145,20 +114,6 @@ function isProductPopular(product: DbProduct) {
     cleanBoolean(product?.popular) ||
     cleanBoolean(product?.featured)
   );
-}
-
-function normalizeCategory(category: DbCategory): MenuCategoryTab {
-  const name = cleanString(category.name);
-  const cleanSlug = slugify(category.slug || category.id || category._id || name);
-
-  return {
-    id: cleanSlug,
-    slug: cleanSlug,
-    name,
-    description: cleanString(category.description),
-    image: cleanString(category.image),
-    sortOrder: cleanNumber(category.sortOrder),
-  };
 }
 
 function getProductCategoryName(product: DbProduct) {
@@ -186,45 +141,10 @@ function getProductCategorySlug(product: DbProduct) {
   );
 }
 
-function normalizeProductForSnapshot(product: DbProduct, index: number) {
-  const plainProduct = toPlainJSON<any>(product, {} as any);
-
-  const productId = cleanString(
-    plainProduct.id || plainProduct._id || plainProduct.productId || plainProduct.slug
-  );
-
-  const categoryName = getProductCategoryName(plainProduct);
-  const categorySlug = getProductCategorySlug(plainProduct);
-  const title = cleanString(plainProduct.title || plainProduct.name);
-  const name = cleanString(plainProduct.name || plainProduct.title);
-
-  return {
-    ...plainProduct,
-    id: productId || `product-${index + 1}`,
-    _id: cleanString(plainProduct._id || productId || `product-${index + 1}`),
-    title,
-    name,
-    categoryName,
-    categorySlug,
-    categoryId: cleanString(
-      plainProduct.categoryId ||
-        plainProduct.category?._id ||
-        plainProduct.category?.id ||
-        categorySlug
-    ),
-  };
-}
-
-function normalizeProductsForSnapshot(products: DbProduct[]) {
-  return (Array.isArray(products) ? products : [])
-    .map((product, index) => normalizeProductForSnapshot(product, index))
-    .filter((product) => cleanString(product.title || product.name));
-}
-
-function deriveCategoriesFromProducts(products: DbProduct[]) {
+export function buildSnapshotCategories(products: DbProduct[]) {
   const seen = new Set<string>();
 
-  return (Array.isArray(products) ? products : [])
+  const realCategories = (Array.isArray(products) ? products : [])
     .map((product) => {
       const categoryName = getProductCategoryName(product);
       const categorySlug = getProductCategorySlug(product);
@@ -232,38 +152,15 @@ function deriveCategoriesFromProducts(products: DbProduct[]) {
       return {
         id: categorySlug,
         slug: categorySlug,
-        name: categoryName || categorySlug,
+        name: categoryName || categorySlug.replace(/-/g, " "),
         description: "",
         image: "",
-        sortOrder: cleanNumber(product?.categorySortOrder || 9999),
+        sortOrder: cleanNumber(product?.categorySortOrder || product?.sortOrder || 9999),
       };
     })
     .filter((category) => {
       if (!category.id || !category.name) return false;
       if (isPopularCategory(category)) return false;
-      if (isMenuCouponsCategory(category)) return false;
-      if (seen.has(category.id)) return false;
-
-      seen.add(category.id);
-      return true;
-    });
-}
-
-export function buildSnapshotCategories(
-  dbCategories: DbCategory[],
-  products: DbProduct[]
-) {
-  const seen = new Set<string>();
-
-  const realCategories = [
-    ...(Array.isArray(dbCategories) ? dbCategories : [])
-      .map((category) => toPlainJSON(category, {} as DbCategory))
-      .filter((category) => !isPopularCategory(category))
-      .map((category) => normalizeCategory(category)),
-    ...deriveCategoriesFromProducts(products),
-  ]
-    .filter((category) => {
-      if (!category.name) return false;
       if (isMenuCouponsCategory(category)) return false;
 
       const key = slugify(category.slug || category.id || category.name);
@@ -274,9 +171,7 @@ export function buildSnapshotCategories(
     })
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 
-  const hasPopularProducts = (Array.isArray(products) ? products : []).some(
-    isProductPopular
-  );
+  const hasPopularProducts = (Array.isArray(products) ? products : []).some(isProductPopular);
 
   return hasPopularProducts ? [POPULAR_CATEGORY, ...realCategories] : realCategories;
 }
@@ -290,43 +185,11 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
 
   await connectDB();
 
-  await StoreMenu.findOneAndUpdate(
-    { storeSlug: cleanStoreSlug },
-    {
-      $set: {
-        storeSlug: cleanStoreSlug,
-        status: "building",
-        "meta.rebuiltReason": reason,
-        "meta.errorMessage": "",
-      },
-      $setOnInsert: {
-        categories: [],
-        products: [],
-        menuProducts: [],
-        version: 0,
-      },
-    },
-    {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-    }
-  );
-
   try {
-    // Keep these sequential to avoid Mongo Atlas timeouts on heavy store menus.
-    const dbCategoriesRaw = await getStoreMenuCategories(cleanStoreSlug);
-    const dbProductsRaw = await getStoreMenuProducts(cleanStoreSlug);
-
-    const products = normalizeProductsForSnapshot(
-      Array.isArray(dbProductsRaw) ? dbProductsRaw : []
-    );
-
-    const categories = buildSnapshotCategories(
-      Array.isArray(dbCategoriesRaw) ? dbCategoriesRaw : [],
-      products
-    );
-
+    // Important: rebuild now uses product configs only and derives categories from products.
+    // No separate category/modifier/upsell collection loop here.
+    const products = await getStoreMenuProducts(cleanStoreSlug);
+    const categories = buildSnapshotCategories(products || []);
     const now = new Date();
 
     const snapshot = await StoreMenu.findOneAndUpdate(
@@ -351,12 +214,9 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
       },
       {
         upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
+        returnDocument: "after",
       }
     ).lean<any>();
-
-    clearStoreMenuSnapshotCache(cleanStoreSlug);
 
     return {
       storeSlug: cleanStoreSlug,
@@ -380,11 +240,9 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
       },
       {
         upsert: false,
-        new: true,
+        returnDocument: "after",
       }
-    );
-
-    clearStoreMenuSnapshotCache(cleanStoreSlug);
+    ).catch(() => null);
 
     throw error;
   }

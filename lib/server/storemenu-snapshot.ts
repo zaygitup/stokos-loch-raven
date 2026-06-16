@@ -3,44 +3,6 @@ import "server-only";
 import connectDB from "@/lib/mongodb";
 import StoreMenu from "@/models/storemenu";
 
-function cleanString(value: unknown) {
-  return String(value || "").trim();
-}
-
-function normalizeStoreSlug(value: unknown) {
-  return cleanString(value)
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function cleanNumber(value: unknown, fallback = 0) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
-
-  const number = Number(cleanString(value).replace(/[^0-9.-]/g, "") || fallback);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function toPlainJSON<T>(value: T, fallback: T): T {
-  try {
-    if (value === undefined || value === null) return fallback;
-    return JSON.parse(JSON.stringify(value)) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-export type StoreMenuSnapshotStatus =
-  | "ready"
-  | "building"
-  | "failed"
-  | "missing"
-  | "empty"
-  | "timeout"
-  | "error"
-  | "stale";
-
 export type StoreMenuSnapshot = {
   storeSlug: string;
   categories: any[];
@@ -48,35 +10,24 @@ export type StoreMenuSnapshot = {
   menuProducts: any[];
   version?: number;
   builtAt?: Date | string | null;
-  status?: StoreMenuSnapshotStatus | string;
+  status?: string;
 };
 
-type CachedSnapshot = {
-  data: StoreMenuSnapshot;
-  expiresAt: number;
-};
+const SNAPSHOT_CACHE_TTL_MS = 60_000;
+const SNAPSHOT_READ_TIMEOUT_MS = 15_000;
 
-const SNAPSHOT_CACHE_TTL_MS = cleanNumber(
-  process.env.STORE_MENU_SNAPSHOT_CACHE_TTL_MS,
-  30_000
-);
+const snapshotCache = new Map<string, { data: StoreMenuSnapshot; expiresAt: number }>();
 
-const SNAPSHOT_READ_TIMEOUT_MS = cleanNumber(
-  process.env.STORE_MENU_SNAPSHOT_READ_TIMEOUT_MS,
-  2_500
-);
+function normalizeStoreSlug(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
-const SNAPSHOT_QUERY_MAX_TIME_MS = cleanNumber(
-  process.env.STORE_MENU_SNAPSHOT_QUERY_MAX_TIME_MS,
-  1_500
-);
-
-const snapshotMemoryCache = new Map<string, CachedSnapshot>();
-
-function createEmptySnapshot(
-  storeSlug: string,
-  status: StoreMenuSnapshotStatus | string = "missing"
-): StoreMenuSnapshot {
+function emptySnapshot(storeSlug: string, status = "missing"): StoreMenuSnapshot {
   return {
     storeSlug,
     categories: [],
@@ -87,11 +38,12 @@ function createEmptySnapshot(
   };
 }
 
-function getCachedSnapshot(storeSlug: string, allowExpired = false) {
-  const cached = snapshotMemoryCache.get(storeSlug);
+function getCachedSnapshot(storeSlug: string) {
+  const cached = snapshotCache.get(storeSlug);
   if (!cached) return null;
 
-  if (!allowExpired && cached.expiresAt <= Date.now()) {
+  if (Date.now() > cached.expiresAt) {
+    snapshotCache.delete(storeSlug);
     return null;
   }
 
@@ -99,55 +51,22 @@ function getCachedSnapshot(storeSlug: string, allowExpired = false) {
 }
 
 function setCachedSnapshot(storeSlug: string, data: StoreMenuSnapshot) {
-  snapshotMemoryCache.set(storeSlug, {
+  snapshotCache.set(storeSlug, {
     data,
     expiresAt: Date.now() + SNAPSHOT_CACHE_TTL_MS,
   });
 }
 
-export function clearStoreMenuSnapshotCache(storeSlug?: string) {
-  const cleanStoreSlug = normalizeStoreSlug(storeSlug);
-
-  if (cleanStoreSlug) {
-    snapshotMemoryCache.delete(cleanStoreSlug);
-    return;
-  }
-
-  snapshotMemoryCache.clear();
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
 }
 
-function normalizeSnapshotDocument(
-  storeSlug: string,
-  snapshot: any
-): StoreMenuSnapshot {
-  if (!snapshot) return createEmptySnapshot(storeSlug, "missing");
-
-  const categories = toPlainJSON<any[]>(
-    Array.isArray(snapshot.categories) ? snapshot.categories : [],
-    []
-  );
-
-  const products = toPlainJSON<any[]>(
-    Array.isArray(snapshot.products)
-      ? snapshot.products
-      : Array.isArray(snapshot.menuProducts)
-        ? snapshot.menuProducts
-        : [],
-    []
-  );
-
-  return {
-    storeSlug,
-    categories,
-    products,
-    menuProducts: products,
-    version: snapshot.version,
-    builtAt: snapshot.builtAt ? toPlainJSON(snapshot.builtAt, snapshot.builtAt) : null,
-    status: snapshot.status || "ready",
-  };
-}
-
-async function readSnapshotFromDB(storeSlug: string) {
+async function readSnapshotFromDB(storeSlug: string): Promise<StoreMenuSnapshot> {
   await connectDB();
 
   const snapshot = await StoreMenu.findOne({ storeSlug })
@@ -161,60 +80,60 @@ async function readSnapshotFromDB(storeSlug: string) {
       builtAt: 1,
       status: 1,
     })
-    .sort({ version: -1, builtAt: -1, updatedAt: -1 })
-    .maxTimeMS(SNAPSHOT_QUERY_MAX_TIME_MS)
+    .sort({ builtAt: -1, updatedAt: -1 })
     .lean<any>();
 
-  return normalizeSnapshotDocument(storeSlug, snapshot);
+  const products = Array.isArray(snapshot?.products)
+    ? snapshot.products
+    : Array.isArray(snapshot?.menuProducts)
+      ? snapshot.menuProducts
+      : [];
+
+  return {
+    storeSlug,
+    categories: Array.isArray(snapshot?.categories) ? snapshot.categories : [],
+    products,
+    menuProducts: products,
+    version: snapshot?.version,
+    builtAt: snapshot?.builtAt || null,
+    status: snapshot?.status || "missing",
+  };
 }
 
-export async function getStoreMenuSnapshot(
-  storeSlug: string
-): Promise<StoreMenuSnapshot> {
+export async function getStoreMenuSnapshot(storeSlug: string): Promise<StoreMenuSnapshot> {
   const cleanStoreSlug = normalizeStoreSlug(storeSlug);
 
-  if (!cleanStoreSlug) {
-    return createEmptySnapshot("", "empty");
-  }
+  if (!cleanStoreSlug) return emptySnapshot("", "empty");
 
-  const freshCachedSnapshot = getCachedSnapshot(cleanStoreSlug);
-  if (freshCachedSnapshot) return freshCachedSnapshot;
-
-  const staleCachedSnapshot = getCachedSnapshot(cleanStoreSlug, true);
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  const readPromise = readSnapshotFromDB(cleanStoreSlug)
-    .then((snapshot) => {
-      setCachedSnapshot(cleanStoreSlug, snapshot);
-      return snapshot;
-    })
-    .catch((error) => {
-      console.error(`StoreMenu snapshot read failed for ${cleanStoreSlug}:`, error);
-      throw error;
-    });
-
-  const timeoutPromise = new Promise<StoreMenuSnapshot>((resolve) => {
-    timeoutId = setTimeout(() => {
-      if (staleCachedSnapshot) {
-        resolve({ ...staleCachedSnapshot, status: "stale" });
-        return;
-      }
-
-      resolve(createEmptySnapshot(cleanStoreSlug, "timeout"));
-    }, SNAPSHOT_READ_TIMEOUT_MS);
-  });
+  const cached = getCachedSnapshot(cleanStoreSlug);
+  if (cached) return cached;
 
   try {
-    const snapshot = await Promise.race([readPromise, timeoutPromise]);
-    return snapshot;
-  } catch {
-    if (staleCachedSnapshot) {
-      return { ...staleCachedSnapshot, status: "stale" };
-    }
+    const snapshot = await withTimeout(
+      readSnapshotFromDB(cleanStoreSlug),
+      SNAPSHOT_READ_TIMEOUT_MS,
+      `Store menu snapshot read for ${cleanStoreSlug}`
+    );
 
-    return createEmptySnapshot(cleanStoreSlug, "error");
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    setCachedSnapshot(cleanStoreSlug, snapshot);
+    return snapshot;
+  } catch (error: any) {
+    console.error(`StoreMenu snapshot read failed for ${cleanStoreSlug}:`, error?.message || error);
+
+    const stale = snapshotCache.get(cleanStoreSlug)?.data;
+    if (stale) return stale;
+
+    return emptySnapshot(cleanStoreSlug, "read-failed");
+  }
+}
+export function clearStoreMenuSnapshotCache(storeSlug?: string) {
+  if (!storeSlug) {
+    snapshotCache.clear();
+    return;
+  }
+
+  const cleanStoreSlug = normalizeStoreSlug(storeSlug);
+  if (cleanStoreSlug) {
+    snapshotCache.delete(cleanStoreSlug);
   }
 }

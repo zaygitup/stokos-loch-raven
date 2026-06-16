@@ -95,6 +95,96 @@ function isMenuCouponsCategory(category: Partial<MenuCategoryTab>) {
     .some((key) => MENU_COUPON_CATEGORY_KEYS.has(key));
 }
 
+function getProductCategoryName(product: any) {
+  if (typeof product?.category === "string") return cleanString(product.category);
+
+  return cleanString(
+    product?.categoryName ||
+      product?.categoryTitle ||
+      product?.category?.name ||
+      product?.category?.title ||
+      ""
+  );
+}
+
+function getProductCategorySlug(product: any) {
+  if (typeof product?.category === "string") return slugify(product.category);
+
+  return slugify(
+    product?.categorySlug ||
+      product?.category?.slug ||
+      product?.category?.id ||
+      product?.category?._id ||
+      getProductCategoryName(product) ||
+      product?.categoryId
+  );
+}
+
+function isProductPopular(product: any) {
+  return (
+    cleanBoolean(product?.isPopular) ||
+    cleanBoolean(product?.showInPopular) ||
+    cleanBoolean(product?.popular) ||
+    cleanBoolean(product?.featured)
+  );
+}
+
+function isProductActive(product: any) {
+  const status = cleanString(product?.status || "Active").toLowerCase();
+  return !status || status === "active" || status === "published" || status === "available";
+}
+
+function normalizeProduct(product: any, storeSlug: string) {
+  const title = cleanString(product?.title || product?.name || "Menu Item");
+  const productId = cleanString(product?.id || product?.productId || product?._id || product?.slug || slugify(title));
+  const categoryName = getProductCategoryName(product);
+  const categorySlug = getProductCategorySlug(product);
+  const price = cleanNumber(product?.price ?? product?.numericPrice);
+  const popular = isProductPopular(product);
+
+  return {
+    ...product,
+    id: productId,
+    productId: cleanString(product?.productId || productId),
+    slug: cleanString(product?.slug || slugify(title)),
+    title,
+    name: title,
+    description: cleanString(product?.description),
+    image: cleanString(product?.image || "/images/placeholder-food.png"),
+    price,
+    numericPrice: cleanNumber(product?.numericPrice ?? price),
+    categoryId: cleanString(product?.categoryId || categorySlug),
+    categoryName,
+    categorySlug,
+    category: categorySlug || categoryName,
+    storeSlug: cleanString(product?.storeSlug || storeSlug),
+    sortOrder: cleanNumber(product?.sortOrder),
+    isPopular: popular,
+    showInPopular: popular,
+    status: cleanString(product?.status || "Active"),
+  };
+}
+
+function normalizeProducts(products: any[], storeSlug: string) {
+  return (Array.isArray(products) ? products : [])
+    .map((product) => normalizeProduct(product, storeSlug))
+    .filter((product) => {
+      if (!product.id || !product.title) return false;
+      if (!isProductActive(product)) return false;
+
+      const categoryKey = slugify(product.categorySlug || product.categoryName || product.category);
+      if (MENU_COUPON_CATEGORY_KEYS.has(categoryKey)) return false;
+
+      return true;
+    })
+    .sort((a, b) => {
+      const categorySort = cleanString(a.categorySlug).localeCompare(cleanString(b.categorySlug));
+      if (categorySort !== 0) return categorySort;
+
+      return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
+    });
+}
+
 function normalizeCategory(category: Partial<MenuCategoryTab>): MenuCategoryTab {
   const name = cleanString(category.name);
   const cleanSlug = slugify(category.slug || category.id || name);
@@ -128,31 +218,6 @@ function normalizeRealCategories(categories: Partial<MenuCategoryTab>[]) {
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 }
 
-function getProductCategoryName(product: any) {
-  if (typeof product?.category === "string") return cleanString(product.category);
-
-  return cleanString(
-    product?.categoryName ||
-      product?.categoryTitle ||
-      product?.category?.name ||
-      product?.category?.title ||
-      ""
-  );
-}
-
-function getProductCategorySlug(product: any) {
-  if (typeof product?.category === "string") return slugify(product.category);
-
-  return slugify(
-    product?.categorySlug ||
-      product?.category?.slug ||
-      product?.category?.id ||
-      product?.category?._id ||
-      getProductCategoryName(product) ||
-      product?.categoryId
-  );
-}
-
 function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
   const seen = new Set<string>();
 
@@ -164,7 +229,7 @@ function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
       return {
         id: categorySlug,
         slug: categorySlug,
-        name: categoryName || categorySlug,
+        name: categoryName || categorySlug.replace(/-/g, " "),
         description: "",
         image: "",
         sortOrder: cleanNumber(product?.categorySortOrder || 9999),
@@ -231,71 +296,6 @@ function productBelongsToCategory(product: any, category: MenuCategoryTab) {
   const productKeys = getProductCategoryKeys(product);
 
   return categoryKeys.some((key) => productKeys.includes(key));
-}
-
-function isProductPopular(product: any) {
-  return (
-    cleanBoolean(product?.isPopular) ||
-    cleanBoolean(product?.showInPopular) ||
-    cleanBoolean(product?.popular) ||
-    cleanBoolean(product?.featured)
-  );
-}
-
-function isProductActive(product: any) {
-  const status = cleanString(product?.status || "Active").toLowerCase();
-  return !status || status === "active" || status === "published" || status === "available";
-}
-
-function normalizeProduct(product: any, storeSlug: string) {
-  const title = cleanString(product?.title || product?.name || "Menu Item");
-  const productId = cleanString(product?.id || product?.productId || product?._id || product?.slug || slugify(title));
-  const categoryName = getProductCategoryName(product);
-  const categorySlug = getProductCategorySlug(product);
-  const price = cleanNumber(product?.price ?? product?.numericPrice);
-  const popular = isProductPopular(product);
-
-  return {
-    ...product,
-    id: productId,
-    productId: cleanString(product?.productId || productId),
-    slug: cleanString(product?.slug || slugify(title)),
-    title,
-    name: title,
-    description: cleanString(product?.description),
-    image: cleanString(product?.image || "/images/placeholder-food.png"),
-    price,
-    numericPrice: cleanNumber(product?.numericPrice ?? price),
-    categoryId: cleanString(product?.categoryId || categorySlug),
-    categoryName,
-    categorySlug,
-    category: categorySlug || categoryName,
-    storeSlug: cleanString(product?.storeSlug || storeSlug),
-    sortOrder: cleanNumber(product?.sortOrder),
-    isPopular: popular,
-    showInPopular: popular,
-    status: cleanString(product?.status || "Active"),
-  };
-}
-
-function normalizeProducts(products: any[], storeSlug: string) {
-  return (Array.isArray(products) ? products : [])
-    .map((product) => normalizeProduct(product, storeSlug))
-    .filter((product) => {
-      if (!product.id || !product.title) return false;
-      if (!isProductActive(product)) return false;
-
-      const categoryKey = slugify(product.categorySlug || product.categoryName || product.category);
-      if (MENU_COUPON_CATEGORY_KEYS.has(categoryKey)) return false;
-
-      return true;
-    })
-    .sort((a, b) => {
-      const categorySort = cleanString(a.categorySlug).localeCompare(cleanString(b.categorySlug));
-      if (categorySort !== 0) return categorySort;
-
-      return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-    });
 }
 
 export default function MenuSectionsClient({

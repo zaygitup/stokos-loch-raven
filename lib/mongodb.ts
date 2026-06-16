@@ -38,20 +38,16 @@ export default async function connectDB() {
       dbName: MONGODB_DB,
       bufferCommands: false,
       autoIndex: process.env.NODE_ENV !== "production",
-
-      // Important for Windows/local DNS + MongoDB Atlas SRV connection
       family: 4,
 
       maxPoolSize: 10,
       minPoolSize: 0,
       maxIdleTimeMS: 60_000,
 
-      // 3s was too aggressive for Atlas TLS connection
       serverSelectionTimeoutMS: 15_000,
       connectTimeoutMS: 15_000,
       socketTimeoutMS: 45_000,
       heartbeatFrequencyMS: 10_000,
-
       retryWrites: true,
     });
   }
