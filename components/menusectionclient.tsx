@@ -66,8 +66,14 @@ function cleanBoolean(value: unknown, fallback = false) {
 
   if (typeof value === "string") {
     const lower = value.toLowerCase().trim();
-    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) return true;
-    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) return false;
+
+    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) {
+      return true;
+    }
+
+    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) {
+      return false;
+    }
   }
 
   return fallback;
@@ -140,6 +146,7 @@ function isProductPopular(product: any) {
 
 function isProductActive(product: any) {
   const status = cleanString(product?.status || "Active").toLowerCase();
+
   return (
     !status ||
     status === "active" ||
@@ -151,11 +158,21 @@ function isProductActive(product: any) {
 
 function normalizeProduct(product: any, storeSlug: string) {
   const title = cleanString(product?.title || product?.name || "Menu Item");
-  const productId = cleanString(product?.id || product?.productId || product?._id || product?.slug || slugify(title));
+
+  const productId = cleanString(
+    product?.id ||
+      product?.productId ||
+      product?._id ||
+      product?.slug ||
+      slugify(title)
+  );
+
   const rawCategoryName = getProductCategoryName(product);
   const rawCategorySlug = getProductCategorySlug(product);
+
   const categoryName = rawCategoryName || DEFAULT_CATEGORY.name;
   const categorySlug = rawCategorySlug || DEFAULT_CATEGORY.slug || DEFAULT_CATEGORY.id;
+
   const price = cleanNumber(product?.price ?? product?.numericPrice);
   const popular = isProductPopular(product);
 
@@ -189,13 +206,19 @@ function normalizeProducts(products: any[], storeSlug: string) {
       if (!product.id || !product.title) return false;
       if (!isProductActive(product)) return false;
 
-      const categoryKey = slugify(product.categorySlug || product.categoryName || product.category);
+      const categoryKey = slugify(
+        product.categorySlug || product.categoryName || product.category
+      );
+
       if (MENU_COUPON_CATEGORY_KEYS.has(categoryKey)) return false;
 
       return true;
     })
     .sort((a, b) => {
-      const categorySort = cleanString(a.categorySlug).localeCompare(cleanString(b.categorySlug));
+      const categorySort = cleanString(a.categorySlug).localeCompare(
+        cleanString(b.categorySlug)
+      );
+
       if (categorySort !== 0) return categorySort;
 
       return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
@@ -240,8 +263,16 @@ function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
 
   return (Array.isArray(products) ? products : [])
     .map((product) => {
-      const categoryName = getProductCategoryName(product) || product?.categoryName || DEFAULT_CATEGORY.name;
-      const categorySlug = getProductCategorySlug(product) || product?.categorySlug || DEFAULT_CATEGORY.slug || DEFAULT_CATEGORY.id;
+      const categoryName =
+        getProductCategoryName(product) ||
+        product?.categoryName ||
+        DEFAULT_CATEGORY.name;
+
+      const categorySlug =
+        getProductCategorySlug(product) ||
+        product?.categorySlug ||
+        DEFAULT_CATEGORY.slug ||
+        DEFAULT_CATEGORY.id;
 
       return {
         id: categorySlug,
@@ -263,7 +294,10 @@ function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
     });
 }
 
-function buildMenuCategories(inputCategories: Partial<MenuCategoryTab>[], products: any[]) {
+function buildMenuCategories(
+  inputCategories: Partial<MenuCategoryTab>[],
+  products: any[]
+) {
   const seen = new Set<string>();
 
   const realCategories = [
@@ -328,6 +362,41 @@ function productBelongsToCategory(product: any, category: MenuCategoryTab) {
   return categoryKeys.some((key) => productKeys.includes(key));
 }
 
+function productMatchesSearch(product: any, query: string) {
+  if (!query) return true;
+
+  return cleanString(product.title || product.name)
+    .toLowerCase()
+    .includes(query);
+}
+
+function EmptyCategorySection({ category }: { category: MenuCategoryTab }) {
+  return (
+    <section
+      id={getCategorySectionId(category)}
+      className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-5 md:px-6 xl:px-10"
+    >
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-zinc-950 dark:text-white">
+            {category.name}
+          </h2>
+
+          {category.description ? (
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              {category.description}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-dashed border-zinc-200 bg-white p-6 text-sm font-semibold text-zinc-500 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-400">
+        No products added in this category yet.
+      </div>
+    </section>
+  );
+}
+
 export default function MenuSectionsClient({
   storeSlug,
   categories = [],
@@ -347,26 +416,25 @@ export default function MenuSectionsClient({
 
   const visibleCategories = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+
     if (!query) return menuCategories;
 
     return menuCategories.filter((category) => {
       if (isPopularCategory(category)) {
         return products.some(
-          (product) =>
-            isProductPopular(product) &&
-            cleanString(product.title || product.name).toLowerCase().includes(query)
+          (product) => isProductPopular(product) && productMatchesSearch(product, query)
         );
       }
 
       return products.some(
         (product) =>
           productBelongsToCategory(product, category) &&
-          cleanString(product.title || product.name).toLowerCase().includes(query)
+          productMatchesSearch(product, query)
       );
     });
   }, [menuCategories, products, searchQuery]);
 
-  if (!products.length) {
+  if (!menuCategories.length && !products.length) {
     return (
       <section className="mx-auto w-full max-w-[1600px] px-4 py-10 sm:px-5 md:px-6 xl:px-10">
         <div className="rounded-3xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-[#121212]">
@@ -382,11 +450,14 @@ export default function MenuSectionsClient({
     <>
       {visibleCategories.map((category) => {
         const popularCategory = isPopularCategory(category);
+
         const sectionProducts = popularCategory
           ? products.filter((product) => isProductPopular(product))
           : products.filter((product) => productBelongsToCategory(product, category));
 
-        if (!sectionProducts.length) return null;
+        if (!sectionProducts.length) {
+          return <EmptyCategorySection key={category.id} category={category} />;
+        }
 
         return (
           <MenuSection

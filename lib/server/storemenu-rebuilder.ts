@@ -2,10 +2,8 @@ import "server-only";
 
 import connectDB from "@/lib/mongodb";
 import StoreMenu from "@/models/storemenu";
-import {
-  clearStoreMenuProductsCache,
-  getStoreMenuProducts,
-} from "@/lib/server/menuproducts";
+import { getStoreMenuProducts } from "@/lib/server/menuproducts";
+import { getStoreMenuCategories } from "@/lib/server/menucategories";
 
 export type MenuCategoryTab = {
   id: string;
@@ -34,6 +32,24 @@ type DbProduct = {
   featured?: boolean;
 };
 
+type AdminCategory = {
+  id?: string;
+  _id?: string;
+  name?: string;
+  title?: string;
+  slug?: string;
+  description?: string;
+  image?: string;
+  imageUrl?: string;
+  thumbnail?: string;
+  sortOrder?: number;
+  categorySortOrder?: number;
+  status?: string;
+  isActive?: boolean;
+  active?: boolean;
+  hidden?: boolean;
+};
+
 const POPULAR_CATEGORY: MenuCategoryTab = {
   id: "trending",
   slug: "trending",
@@ -41,15 +57,6 @@ const POPULAR_CATEGORY: MenuCategoryTab = {
   description: "",
   image: "",
   sortOrder: -1,
-};
-
-const DEFAULT_CATEGORY: MenuCategoryTab = {
-  id: "menu-items",
-  slug: "menu-items",
-  name: "Menu Items",
-  description: "",
-  image: "",
-  sortOrder: 9999,
 };
 
 const MENU_COUPON_CATEGORY_KEYS = new Set([
@@ -81,8 +88,14 @@ function cleanBoolean(value: unknown, fallback = false) {
 
   if (typeof value === "string") {
     const lower = value.toLowerCase().trim();
-    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) return true;
-    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) return false;
+
+    if (["true", "yes", "1", "active", "popular", "featured"].includes(lower)) {
+      return true;
+    }
+
+    if (["false", "no", "0", "inactive", "off", "hidden"].includes(lower)) {
+      return false;
+    }
   }
 
   return fallback;
@@ -153,21 +166,36 @@ function getProductCategorySlug(product: DbProduct) {
   );
 }
 
+function isAdminCategoryVisible(category: AdminCategory) {
+  if (category?.hidden === true) return false;
+
+  const status = cleanString(category?.status).toLowerCase();
+
+  if (status && ["inactive", "hidden", "disabled", "deleted"].includes(status)) {
+    return false;
+  }
+
+  if (typeof category?.isActive === "boolean") return category.isActive;
+  if (typeof category?.active === "boolean") return category.active;
+
+  return true;
+}
+
 export function buildSnapshotCategories(products: DbProduct[]) {
   const seen = new Set<string>();
 
   const realCategories = (Array.isArray(products) ? products : [])
     .map((product) => {
       const categoryName = getProductCategoryName(product);
-      const categorySlug = getProductCategorySlug(product) || "menu-items";
+      const categorySlug = getProductCategorySlug(product);
 
       return {
         id: categorySlug,
         slug: categorySlug,
-        name: categoryName || categorySlug.replace(/-/g, " ") || "Menu Items",
+        name: categoryName || categorySlug.replace(/-/g, " "),
         description: "",
         image: "",
-        sortOrder: cleanNumber(product?.categorySortOrder || product?.sortOrder || 9999),
+        sortOrder: cleanNumber(product?.categorySortOrder ?? product?.sortOrder ?? 9999),
       };
     })
     .filter((category) => {
@@ -185,12 +213,46 @@ export function buildSnapshotCategories(products: DbProduct[]) {
 
   const hasPopularProducts = (Array.isArray(products) ? products : []).some(isProductPopular);
 
-  const finalCategories: MenuCategoryTab[] = realCategories.length ? realCategories : [];
-  if (!finalCategories.length && Array.isArray(products) && products.length) {
-    finalCategories.push(DEFAULT_CATEGORY);
-  }
+  return hasPopularProducts ? [POPULAR_CATEGORY, ...realCategories] : realCategories;
+}
 
-  return hasPopularProducts ? [POPULAR_CATEGORY, ...finalCategories] : finalCategories;
+export function buildSnapshotCategoriesFromAdmin(
+  adminCategories: AdminCategory[],
+  products: DbProduct[]
+) {
+  const seen = new Set<string>();
+
+  const realCategories = (Array.isArray(adminCategories) ? adminCategories : [])
+    .filter(isAdminCategoryVisible)
+    .map((category) => {
+      const name = cleanString(category?.name || category?.title);
+      const slug = slugify(category?.slug || category?.id || category?._id || name);
+
+      return {
+        id: slug,
+        slug,
+        name: name || slug.replace(/-/g, " "),
+        description: cleanString(category?.description),
+        image: cleanString(category?.image || category?.imageUrl || category?.thumbnail),
+        sortOrder: cleanNumber(category?.sortOrder ?? category?.categorySortOrder ?? 9999),
+      };
+    })
+    .filter((category) => {
+      if (!category.id || !category.name) return false;
+      if (isPopularCategory(category)) return false;
+      if (isMenuCouponsCategory(category)) return false;
+
+      const key = slugify(category.slug || category.id || category.name);
+      if (!key || seen.has(key)) return false;
+
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+
+  const hasPopularProducts = (Array.isArray(products) ? products : []).some(isProductPopular);
+
+  return hasPopularProducts ? [POPULAR_CATEGORY, ...realCategories] : realCategories;
 }
 
 export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change") {
@@ -203,25 +265,18 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
   await connectDB();
 
   try {
-    await StoreMenu.findOneAndUpdate(
-      { storeSlug: cleanStoreSlug },
-      {
-        $set: {
-          storeSlug: cleanStoreSlug,
-          status: "building",
-          "meta.rebuiltReason": reason,
-          "meta.errorMessage": "",
-          "meta.lastFailedAt": null,
-        },
-      },
-      { upsert: true, returnDocument: "after" }
-    ).lean<any>();
+    const [products, adminCategories] = await Promise.all([
+      getStoreMenuProducts(cleanStoreSlug),
+      getStoreMenuCategories(cleanStoreSlug),
+    ]);
 
-    // Important: rebuild must not use stale in-memory product cache.
-    clearStoreMenuProductsCache(cleanStoreSlug);
+    const safeProducts = Array.isArray(products) ? products : [];
+    const safeAdminCategories = Array.isArray(adminCategories) ? adminCategories : [];
 
-    const products = await getStoreMenuProducts(cleanStoreSlug);
-    const categories = buildSnapshotCategories(products || []);
+    const categories = safeAdminCategories.length
+      ? buildSnapshotCategoriesFromAdmin(safeAdminCategories, safeProducts)
+      : buildSnapshotCategories(safeProducts);
+
     const now = new Date();
 
     const snapshot = await StoreMenu.findOneAndUpdate(
@@ -231,10 +286,10 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
           storeSlug: cleanStoreSlug,
           status: "ready",
           categories,
-          products,
-          menuProducts: products,
+          products: safeProducts,
+          menuProducts: safeProducts,
           meta: {
-            productCount: products.length,
+            productCount: safeProducts.length,
             categoryCount: categories.length,
             rebuiltReason: reason,
             errorMessage: "",
@@ -253,8 +308,8 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
     return {
       storeSlug: cleanStoreSlug,
       categories,
-      products,
-      menuProducts: products,
+      products: safeProducts,
+      menuProducts: safeProducts,
       version: snapshot?.version || 1,
       builtAt: snapshot?.builtAt || now,
       status: "ready",
