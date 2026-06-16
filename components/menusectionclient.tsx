@@ -28,6 +28,15 @@ const POPULAR_CATEGORY: MenuCategoryTab = {
   sortOrder: -1,
 };
 
+const DEFAULT_CATEGORY: MenuCategoryTab = {
+  id: "menu-items",
+  slug: "menu-items",
+  name: "Menu Items",
+  description: "",
+  image: "",
+  sortOrder: 9999,
+};
+
 const MENU_COUPON_CATEGORY_KEYS = new Set([
   "menu-coupons",
   "menu-coupon",
@@ -131,14 +140,22 @@ function isProductPopular(product: any) {
 
 function isProductActive(product: any) {
   const status = cleanString(product?.status || "Active").toLowerCase();
-  return !status || status === "active" || status === "published" || status === "available";
+  return (
+    !status ||
+    status === "active" ||
+    status === "published" ||
+    status === "available" ||
+    status === "ready"
+  );
 }
 
 function normalizeProduct(product: any, storeSlug: string) {
   const title = cleanString(product?.title || product?.name || "Menu Item");
   const productId = cleanString(product?.id || product?.productId || product?._id || product?.slug || slugify(title));
-  const categoryName = getProductCategoryName(product);
-  const categorySlug = getProductCategorySlug(product);
+  const rawCategoryName = getProductCategoryName(product);
+  const rawCategorySlug = getProductCategorySlug(product);
+  const categoryName = rawCategoryName || DEFAULT_CATEGORY.name;
+  const categorySlug = rawCategorySlug || DEFAULT_CATEGORY.slug || DEFAULT_CATEGORY.id;
   const price = cleanNumber(product?.price ?? product?.numericPrice);
   const popular = isProductPopular(product);
 
@@ -223,8 +240,8 @@ function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
 
   return (Array.isArray(products) ? products : [])
     .map((product) => {
-      const categoryName = getProductCategoryName(product);
-      const categorySlug = getProductCategorySlug(product);
+      const categoryName = getProductCategoryName(product) || product?.categoryName || DEFAULT_CATEGORY.name;
+      const categorySlug = getProductCategorySlug(product) || product?.categorySlug || DEFAULT_CATEGORY.slug || DEFAULT_CATEGORY.id;
 
       return {
         id: categorySlug,
@@ -260,9 +277,15 @@ function buildMenuCategories(inputCategories: Partial<MenuCategoryTab>[], produc
     return true;
   });
 
+  const safeRealCategories = realCategories.length
+    ? realCategories
+    : products.length
+      ? [DEFAULT_CATEGORY]
+      : [];
+
   const hasPopularProducts = products.some((product) => isProductPopular(product));
 
-  return hasPopularProducts ? [POPULAR_CATEGORY, ...realCategories] : realCategories;
+  return hasPopularProducts ? [POPULAR_CATEGORY, ...safeRealCategories] : safeRealCategories;
 }
 
 function getCategorySectionId(category: MenuCategoryTab) {
@@ -289,7 +312,14 @@ function getProductCategoryKeys(product: any) {
 }
 
 function productBelongsToCategory(product: any, category: MenuCategoryTab) {
-  const categoryKeys = [category.id, category.slug, category.name, getCategorySectionId(category)]
+  const sectionId = getCategorySectionId(category);
+
+  if (sectionId === DEFAULT_CATEGORY.id) {
+    const productKeys = getProductCategoryKeys(product);
+    return !productKeys.length || productKeys.includes(DEFAULT_CATEGORY.id);
+  }
+
+  const categoryKeys = [category.id, category.slug, category.name, sectionId]
     .filter(Boolean)
     .map((value) => slugify(value));
 

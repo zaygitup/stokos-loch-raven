@@ -3,6 +3,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { STORES } from "@/lib/data/stores";
 import { rebuildStoreMenu } from "@/lib/server/storemenu-rebuilder";
 import { clearStoreMenuSnapshotCache } from "@/lib/server/storemenu-snapshot";
+import { clearStoreMenuProductsCache } from "@/lib/server/menuproducts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +55,7 @@ function revalidateStore(storeSlug: string) {
   if (!slug) return;
 
   clearStoreMenuSnapshotCache(slug);
+  clearStoreMenuProductsCache(slug);
 
   safeRevalidateTag("store-menu");
   safeRevalidateTag("store-menu-categories");

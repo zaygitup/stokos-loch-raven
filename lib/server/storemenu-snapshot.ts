@@ -13,10 +13,13 @@ export type StoreMenuSnapshot = {
   status?: string;
 };
 
-const SNAPSHOT_CACHE_TTL_MS = 60_000;
-const SNAPSHOT_READ_TIMEOUT_MS = 15_000;
+const snapshotCache = new Map<
+  string,
+  { data: StoreMenuSnapshot; expiresAt: number }
+>();
 
-const snapshotCache = new Map<string, { data: StoreMenuSnapshot; expiresAt: number }>();
+const SNAPSHOT_CACHE_TTL_MS = 60_000;
+const EMPTY_SNAPSHOT_CACHE_TTL_MS = 5_000;
 
 function normalizeStoreSlug(value: unknown) {
   return String(value || "")
@@ -50,57 +53,30 @@ function getCachedSnapshot(storeSlug: string) {
   return cached.data;
 }
 
-function setCachedSnapshot(storeSlug: string, data: StoreMenuSnapshot) {
+function setCachedSnapshot(
+  storeSlug: string,
+  data: StoreMenuSnapshot,
+  ttlMs = SNAPSHOT_CACHE_TTL_MS
+) {
   snapshotCache.set(storeSlug, {
     data,
-    expiresAt: Date.now() + SNAPSHOT_CACHE_TTL_MS,
+    expiresAt: Date.now() + ttlMs,
   });
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
-    }),
-  ]);
+export function clearStoreMenuSnapshotCache(storeSlug?: string) {
+  if (!storeSlug) {
+    snapshotCache.clear();
+    return;
+  }
+
+  const cleanStoreSlug = normalizeStoreSlug(storeSlug);
+  if (cleanStoreSlug) snapshotCache.delete(cleanStoreSlug);
 }
 
-async function readSnapshotFromDB(storeSlug: string): Promise<StoreMenuSnapshot> {
-  await connectDB();
-
-  const snapshot = await StoreMenu.findOne({ storeSlug })
-    .select({
-      _id: 0,
-      storeSlug: 1,
-      categories: 1,
-      products: 1,
-      menuProducts: 1,
-      version: 1,
-      builtAt: 1,
-      status: 1,
-    })
-    .sort({ builtAt: -1, updatedAt: -1 })
-    .lean<any>();
-
-  const products = Array.isArray(snapshot?.products)
-    ? snapshot.products
-    : Array.isArray(snapshot?.menuProducts)
-      ? snapshot.menuProducts
-      : [];
-
-  return {
-    storeSlug,
-    categories: Array.isArray(snapshot?.categories) ? snapshot.categories : [],
-    products,
-    menuProducts: products,
-    version: snapshot?.version,
-    builtAt: snapshot?.builtAt || null,
-    status: snapshot?.status || "missing",
-  };
-}
-
-export async function getStoreMenuSnapshot(storeSlug: string): Promise<StoreMenuSnapshot> {
+export async function getStoreMenuSnapshot(
+  storeSlug: string
+): Promise<StoreMenuSnapshot> {
   const cleanStoreSlug = normalizeStoreSlug(storeSlug);
 
   if (!cleanStoreSlug) return emptySnapshot("", "empty");
@@ -109,31 +85,56 @@ export async function getStoreMenuSnapshot(storeSlug: string): Promise<StoreMenu
   if (cached) return cached;
 
   try {
-    const snapshot = await withTimeout(
-      readSnapshotFromDB(cleanStoreSlug),
-      SNAPSHOT_READ_TIMEOUT_MS,
-      `Store menu snapshot read for ${cleanStoreSlug}`
+    await connectDB();
+
+    // No manual Promise.race / read-timeout here.
+    // Let MongoDB driver use its connection settings so slow Atlas reads do not return fake empty menu data.
+    const snapshot = await StoreMenu.findOne({
+      storeSlug: cleanStoreSlug,
+    })
+      .select({
+        _id: 0,
+        storeSlug: 1,
+        categories: 1,
+        products: 1,
+        menuProducts: 1,
+        version: 1,
+        builtAt: 1,
+        status: 1,
+      })
+      .lean<any>();
+
+    if (!snapshot) {
+      const result = emptySnapshot(cleanStoreSlug, "missing");
+      setCachedSnapshot(cleanStoreSlug, result, EMPTY_SNAPSHOT_CACHE_TTL_MS);
+      return result;
+    }
+
+    const products = Array.isArray(snapshot?.products)
+      ? snapshot.products
+      : Array.isArray(snapshot?.menuProducts)
+        ? snapshot.menuProducts
+        : [];
+
+    const result: StoreMenuSnapshot = {
+      storeSlug: cleanStoreSlug,
+      categories: Array.isArray(snapshot?.categories) ? snapshot.categories : [],
+      products,
+      menuProducts: products,
+      version: snapshot?.version,
+      builtAt: snapshot?.builtAt || null,
+      status: snapshot?.status || "ready",
+    };
+
+    setCachedSnapshot(cleanStoreSlug, result);
+    return result;
+  } catch (error: any) {
+    // console.error in Next dev opens the red overlay. Keep this as warn while debugging.
+    console.warn(
+      `StoreMenu snapshot read failed for ${cleanStoreSlug}:`,
+      error?.message || error
     );
 
-    setCachedSnapshot(cleanStoreSlug, snapshot);
-    return snapshot;
-  } catch (error: any) {
-    console.error(`StoreMenu snapshot read failed for ${cleanStoreSlug}:`, error?.message || error);
-
-    const stale = snapshotCache.get(cleanStoreSlug)?.data;
-    if (stale) return stale;
-
     return emptySnapshot(cleanStoreSlug, "read-failed");
-  }
-}
-export function clearStoreMenuSnapshotCache(storeSlug?: string) {
-  if (!storeSlug) {
-    snapshotCache.clear();
-    return;
-  }
-
-  const cleanStoreSlug = normalizeStoreSlug(storeSlug);
-  if (cleanStoreSlug) {
-    snapshotCache.delete(cleanStoreSlug);
   }
 }

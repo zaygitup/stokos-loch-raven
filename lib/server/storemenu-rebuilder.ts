@@ -2,7 +2,10 @@ import "server-only";
 
 import connectDB from "@/lib/mongodb";
 import StoreMenu from "@/models/storemenu";
-import { getStoreMenuProducts } from "@/lib/server/menuproducts";
+import {
+  clearStoreMenuProductsCache,
+  getStoreMenuProducts,
+} from "@/lib/server/menuproducts";
 
 export type MenuCategoryTab = {
   id: string;
@@ -38,6 +41,15 @@ const POPULAR_CATEGORY: MenuCategoryTab = {
   description: "",
   image: "",
   sortOrder: -1,
+};
+
+const DEFAULT_CATEGORY: MenuCategoryTab = {
+  id: "menu-items",
+  slug: "menu-items",
+  name: "Menu Items",
+  description: "",
+  image: "",
+  sortOrder: 9999,
 };
 
 const MENU_COUPON_CATEGORY_KEYS = new Set([
@@ -147,12 +159,12 @@ export function buildSnapshotCategories(products: DbProduct[]) {
   const realCategories = (Array.isArray(products) ? products : [])
     .map((product) => {
       const categoryName = getProductCategoryName(product);
-      const categorySlug = getProductCategorySlug(product);
+      const categorySlug = getProductCategorySlug(product) || "menu-items";
 
       return {
         id: categorySlug,
         slug: categorySlug,
-        name: categoryName || categorySlug.replace(/-/g, " "),
+        name: categoryName || categorySlug.replace(/-/g, " ") || "Menu Items",
         description: "",
         image: "",
         sortOrder: cleanNumber(product?.categorySortOrder || product?.sortOrder || 9999),
@@ -173,7 +185,12 @@ export function buildSnapshotCategories(products: DbProduct[]) {
 
   const hasPopularProducts = (Array.isArray(products) ? products : []).some(isProductPopular);
 
-  return hasPopularProducts ? [POPULAR_CATEGORY, ...realCategories] : realCategories;
+  const finalCategories: MenuCategoryTab[] = realCategories.length ? realCategories : [];
+  if (!finalCategories.length && Array.isArray(products) && products.length) {
+    finalCategories.push(DEFAULT_CATEGORY);
+  }
+
+  return hasPopularProducts ? [POPULAR_CATEGORY, ...finalCategories] : finalCategories;
 }
 
 export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change") {
@@ -186,8 +203,23 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
   await connectDB();
 
   try {
-    // Important: rebuild now uses product configs only and derives categories from products.
-    // No separate category/modifier/upsell collection loop here.
+    await StoreMenu.findOneAndUpdate(
+      { storeSlug: cleanStoreSlug },
+      {
+        $set: {
+          storeSlug: cleanStoreSlug,
+          status: "building",
+          "meta.rebuiltReason": reason,
+          "meta.errorMessage": "",
+          "meta.lastFailedAt": null,
+        },
+      },
+      { upsert: true, returnDocument: "after" }
+    ).lean<any>();
+
+    // Important: rebuild must not use stale in-memory product cache.
+    clearStoreMenuProductsCache(cleanStoreSlug);
+
     const products = await getStoreMenuProducts(cleanStoreSlug);
     const categories = buildSnapshotCategories(products || []);
     const now = new Date();

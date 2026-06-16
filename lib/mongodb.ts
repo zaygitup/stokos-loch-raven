@@ -31,6 +31,11 @@ export default async function connectDB() {
     return cached.conn;
   }
 
+  if (mongoose.connection.readyState === 1) {
+    cached.conn = mongoose;
+    return cached.conn;
+  }
+
   if (!cached.promise) {
     mongoose.set("strictQuery", true);
 
@@ -40,13 +45,15 @@ export default async function connectDB() {
       autoIndex: process.env.NODE_ENV !== "production",
       family: 4,
 
-      maxPoolSize: 10,
+      // Keep one reusable pool instead of creating a new slow Atlas connection per request.
+      maxPoolSize: 20,
       minPoolSize: 0,
       maxIdleTimeMS: 60_000,
 
-      serverSelectionTimeoutMS: 15_000,
-      connectTimeoutMS: 15_000,
-      socketTimeoutMS: 45_000,
+      // 30s is the MongoDB driver default style timeout. Do not use tiny 2.5s / 15s menu read timeouts.
+      serverSelectionTimeoutMS: 30_000,
+      connectTimeoutMS: 30_000,
+      socketTimeoutMS: 60_000,
       heartbeatFrequencyMS: 10_000,
       retryWrites: true,
     });

@@ -62,6 +62,7 @@ const StoreMenuSchema = new Schema(
 StoreMenuSchema.index({ storeSlug: 1 }, { unique: true });
 StoreMenuSchema.index({ storeSlug: 1, status: 1 });
 StoreMenuSchema.index({ builtAt: -1 });
+StoreMenuSchema.index({ storeSlug: 1, builtAt: -1 });
 
 const StoreMenu =
   mongoose.models.StoreMenu || mongoose.model("StoreMenu", StoreMenuSchema);
