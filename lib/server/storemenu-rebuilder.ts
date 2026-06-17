@@ -2,7 +2,10 @@ import "server-only";
 
 import connectDB from "@/lib/mongodb";
 import StoreMenu from "@/models/storemenu";
-import { getStoreMenuProducts } from "@/lib/server/menuproducts";
+import {
+  clearStoreMenuProductsCache,
+  getStoreMenuProducts,
+} from "@/lib/server/menuproducts";
 import { getStoreMenuCategoriesFromDB } from "@/lib/server/menucategories";
 import { clearStoreMenuSnapshotCache } from "@/lib/server/storemenu-snapshot";
 
@@ -18,19 +21,29 @@ export type MenuCategoryTab = {
 type DbProduct = {
   id?: string;
   _id?: string;
+  productId?: string;
+  slug?: string;
   name?: string;
   title?: string;
+  description?: string;
+  image?: string;
+  price?: number;
+  numericPrice?: number;
   category?: any;
   categoryId?: string;
   categoryName?: string;
   categoryTitle?: string;
   categorySlug?: string;
   categorySortOrder?: number;
+  storeSlug?: string;
   sortOrder?: number;
+  status?: string;
+  updatedAt?: string;
   isPopular?: boolean;
   showInPopular?: boolean;
   popular?: boolean;
   featured?: boolean;
+  [key: string]: any;
 };
 
 type AdminCategory = {
@@ -72,6 +85,10 @@ const MENU_COUPON_CATEGORY_KEYS = new Set([
   "menu-deal",
 ]);
 
+const FALLBACK_IMAGE = "/images/placeholder-food.png";
+const DEFAULT_CATEGORY_NAME = "Menu Items";
+const DEFAULT_CATEGORY_SLUG = "menu-items";
+
 function cleanString(value: unknown) {
   return String(value || "").trim();
 }
@@ -109,6 +126,10 @@ function slugify(value: unknown) {
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function toPlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value || null));
 }
 
 function isPopularCategory(category: Partial<MenuCategoryTab>) {
@@ -150,21 +171,35 @@ function getProductCategoryName(product: DbProduct) {
       product?.categoryTitle ||
       product?.category?.name ||
       product?.category?.title ||
-      ""
+      DEFAULT_CATEGORY_NAME
   );
 }
 
 function getProductCategorySlug(product: DbProduct) {
   if (typeof product?.category === "string") return slugify(product.category);
 
-  return slugify(
-    product?.categorySlug ||
-      product?.category?.slug ||
-      product?.category?.id ||
-      product?.category?._id ||
-      getProductCategoryName(product) ||
-      product?.categoryId
+  return (
+    slugify(
+      product?.categorySlug ||
+        product?.category?.slug ||
+        product?.category?.id ||
+        product?.category?._id ||
+        getProductCategoryName(product) ||
+        product?.categoryId
+    ) || DEFAULT_CATEGORY_SLUG
   );
+}
+
+function getProductTitle(product: DbProduct) {
+  return cleanString(product?.title || product?.name || "Menu Item");
+}
+
+function getProductSlug(product: DbProduct) {
+  return slugify(product?.slug || getProductTitle(product) || product?.id || product?._id);
+}
+
+function getProductId(product: DbProduct) {
+  return cleanString(product?.productId || product?.id || product?._id || getProductSlug(product));
 }
 
 function isAdminCategoryVisible(category: AdminCategory) {
@@ -180,6 +215,61 @@ function isAdminCategoryVisible(category: AdminCategory) {
   if (typeof category?.active === "boolean") return category.active;
 
   return true;
+}
+
+function buildSlimSnapshotProduct(product: DbProduct, storeSlug: string) {
+  const title = getProductTitle(product);
+  const id = getProductId(product);
+  const slug = getProductSlug(product) || slugify(id || title);
+  const categoryName = getProductCategoryName(product);
+  const categorySlug = getProductCategorySlug(product);
+  const categoryId = cleanString(product?.categoryId || categorySlug || categoryName);
+  const price = cleanNumber(product?.price ?? product?.numericPrice);
+  const popular = isProductPopular(product);
+
+  return toPlain({
+    id,
+    productId: id,
+    slug,
+    title,
+    name: title,
+    description: cleanString(product?.description),
+    image: cleanString(product?.image) || FALLBACK_IMAGE,
+    price,
+    numericPrice: price,
+    categoryId,
+    categoryName: categoryName || DEFAULT_CATEGORY_NAME,
+    categorySlug: categorySlug || DEFAULT_CATEGORY_SLUG,
+    category: categorySlug || categoryName || DEFAULT_CATEGORY_SLUG,
+    storeSlug: cleanString(product?.storeSlug) || storeSlug,
+    isPopular: popular,
+    showInPopular: popular,
+    sortOrder: cleanNumber(product?.sortOrder ?? 0),
+    status: cleanString(product?.status || "Active"),
+    updatedAt: cleanString(product?.updatedAt),
+
+    // Keep these keys for frontend compatibility, but do not store heavy data in snapshot.
+    // Product modal/detail API should load modifiers, sizes and upsells only after click.
+    hasDetails: false,
+    sizes: [],
+    modifierGroups: [],
+    attachedModifierGroups: [],
+    relatedUpsells: [],
+    upsell: "",
+  });
+}
+
+function buildSlimSnapshotProducts(products: DbProduct[], storeSlug: string) {
+  const seen = new Set<string>();
+
+  return (Array.isArray(products) ? products : [])
+    .map((product) => buildSlimSnapshotProduct(product, storeSlug))
+    .filter((product) => {
+      const key = cleanString(product?.id || product?.productId || product?.slug);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export function buildSnapshotCategories(products: DbProduct[]) {
@@ -241,6 +331,7 @@ export function buildSnapshotCategoriesFromAdmin(
     .filter((category) => {
       if (!category.id || !category.name) return false;
       if (isPopularCategory(category)) return false;
+      if (isMenuCouponsCategory(category)) return false;
 
       const key = slugify(category.slug || category.id || category.name);
       if (!key || seen.has(key)) return false;
@@ -265,6 +356,10 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
   await connectDB();
 
   try {
+    // Important: admin save/update/delete must not rebuild from old in-memory product cache.
+    clearStoreMenuProductsCache(cleanStoreSlug);
+    clearStoreMenuSnapshotCache(cleanStoreSlug);
+
     const [products, adminCategories] = await Promise.all([
       getStoreMenuProducts(cleanStoreSlug),
       // Direct DB read intentionally used here so rebuild gets latest categories
@@ -273,11 +368,12 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
     ]);
 
     const safeProducts = Array.isArray(products) ? products : [];
+    const slimProducts = buildSlimSnapshotProducts(safeProducts, cleanStoreSlug);
     const safeAdminCategories = Array.isArray(adminCategories) ? adminCategories : [];
 
     const categories = safeAdminCategories.length
-      ? buildSnapshotCategoriesFromAdmin(safeAdminCategories, safeProducts)
-      : buildSnapshotCategories(safeProducts);
+      ? buildSnapshotCategoriesFromAdmin(safeAdminCategories, slimProducts)
+      : buildSnapshotCategories(slimProducts);
 
     const now = new Date();
 
@@ -288,10 +384,14 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
           storeSlug: cleanStoreSlug,
           status: "ready",
           categories,
-          products: safeProducts,
-          menuProducts: safeProducts,
+          products: slimProducts,
+
+          // Do not duplicate the product list here. Old frontend fallback can still read
+          // menuProducts from old snapshots, but new snapshots should stay slim.
+          menuProducts: [],
+
           meta: {
-            productCount: safeProducts.length,
+            productCount: slimProducts.length,
             categoryCount: categories.length,
             rebuiltReason: reason,
             errorMessage: "",
@@ -312,8 +412,8 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
     return {
       storeSlug: cleanStoreSlug,
       categories,
-      products: safeProducts,
-      menuProducts: safeProducts,
+      products: slimProducts,
+      menuProducts: [],
       version: snapshot?.version || 1,
       builtAt: snapshot?.builtAt || now,
       status: "ready",

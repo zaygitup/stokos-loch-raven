@@ -25,12 +25,6 @@ const CategoryStoreConfigSchema = new Schema(
       required: true,
       trim: true,
     },
-    storeSlug: {
-      type: String,
-      default: "",
-      trim: true,
-      lowercase: true,
-    },
     categoryName: {
       type: String,
       default: "",
@@ -71,14 +65,9 @@ CategoryStoreConfigSchema.pre("validate", function () {
 
   doc.categoryId = String(doc.categoryId || "").trim();
   doc.storeId = normalizeStoreId(doc.storeId);
-  doc.storeSlug = normalizeStoreId(doc.storeSlug || doc.storeId);
 
   if (!doc.categorySlug && doc.categoryName) {
     doc.categorySlug = slugify(doc.categoryName);
-  }
-
-  if (doc.categorySlug) {
-    doc.categorySlug = slugify(doc.categorySlug);
   }
 });
 
@@ -87,7 +76,6 @@ CategoryStoreConfigSchema.index(
   { unique: true, name: "unique_category_store_config" }
 );
 CategoryStoreConfigSchema.index({ storeId: 1, status: 1, sortOrder: 1 });
-CategoryStoreConfigSchema.index({ storeSlug: 1, status: 1, sortOrder: 1 });
 CategoryStoreConfigSchema.index({ storeId: 1, status: 1, available: 1, sortOrder: 1 });
 CategoryStoreConfigSchema.index({ storeId: 1, status: 1, categorySlug: 1, sortOrder: 1 });
 CategoryStoreConfigSchema.index({ categoryId: 1 });

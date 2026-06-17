@@ -21,12 +21,6 @@ const CategorySchema = new Schema(
       trim: true,
     },
 
-    title: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     slug: {
       type: String,
       trim: true,
@@ -46,20 +40,6 @@ const CategorySchema = new Schema(
       trim: true,
     },
 
-    imageUrl: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    thumbnail: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    // Kept for admin compatibility only. Frontend menu categories are no longer
-    // filtered by storeId; all active categories from this collection are shown.
     storeId: {
       type: String,
       default: "",
@@ -75,21 +55,6 @@ const CategorySchema = new Schema(
       type: String,
       enum: ["Active", "Hidden", "Inactive"],
       default: "Active",
-    },
-
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-
-    active: {
-      type: Boolean,
-      default: true,
-    },
-
-    hidden: {
-      type: Boolean,
-      default: false,
     },
   },
   {
@@ -110,12 +75,9 @@ CategorySchema.virtual("storeConfigs", {
 CategorySchema.pre("validate", function () {
   const doc = this as any;
 
-  doc.name = cleanString(doc.name || doc.title);
-  doc.title = cleanString(doc.title);
+  doc.name = cleanString(doc.name);
   doc.description = cleanString(doc.description);
-  doc.image = cleanString(doc.image || doc.imageUrl || doc.thumbnail);
-  doc.imageUrl = cleanString(doc.imageUrl);
-  doc.thumbnail = cleanString(doc.thumbnail);
+  doc.image = cleanString(doc.image);
   doc.storeId = cleanString(doc.storeId);
   doc.sortOrder = Number(doc.sortOrder || 0);
 
@@ -132,7 +94,6 @@ CategorySchema.index({ slug: 1 });
 CategorySchema.index({ name: 1 });
 CategorySchema.index({ status: 1, sortOrder: 1 });
 CategorySchema.index({ status: 1, slug: 1 });
-CategorySchema.index({ sortOrder: 1, updatedAt: -1 });
 
 if (process.env.NODE_ENV === "development" && mongoose.models.Category) {
   delete mongoose.models.Category;
