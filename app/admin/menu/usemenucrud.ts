@@ -73,6 +73,16 @@ function getMongoId(item: unknown): string {
   );
 }
 
+function getCategoryMasterId(item: unknown): string {
+  if (!item || typeof item !== "object") return "";
+
+  const obj = item as MongoItem;
+
+  // Important: for categories, PATCH must use the master Category _id/id/categoryId,
+  // not storeConfigId/configId. Store configs are only assignment rows.
+  return String(obj.categoryId || obj._id || obj.id || obj.slug || obj.name || "").trim();
+}
+
 function safeArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -182,6 +192,11 @@ async function apiRebuildStoreMenuSnapshot(
   source?: unknown,
   fallback?: unknown
 ) {
+  // Categories are now saved/read only through CategoryStoreConfig.
+  // Never rebuild StoreMenu snapshots for category add/update/delete,
+  // otherwise old snapshot/category data can overwrite multi-store badges.
+  if (type === "categories") return;
+
   try {
     const res = await fetch("/api/admin/storemenus/rebuild", {
       method: "POST",
@@ -257,7 +272,8 @@ async function apiUpdate<T extends object>(
   type: MenuEntity,
   payload: T
 ): Promise<T> {
-  const mongoId = getMongoId(payload);
+  const mongoId =
+    type === "categories" ? getCategoryMasterId(payload) : getMongoId(payload);
 
   if (!mongoId) {
     throw new Error(`Missing MongoDB ID for ${type} update`);
@@ -365,27 +381,29 @@ function getCategoryRowKeys(category: unknown) {
   if (!category || typeof category !== "object") return [];
 
   const obj = category as {
-    storeConfigId?: unknown;
-    configId?: unknown;
     _id?: unknown;
     id?: unknown;
     categoryId?: unknown;
-    storeId?: unknown;
     name?: unknown;
     categoryName?: unknown;
     slug?: unknown;
+    categorySlug?: unknown;
   };
 
-  const rowId = String(obj.storeConfigId || obj.configId || "").trim();
-  const storeId = normalizeStoreValue(obj.storeId).toLowerCase();
-  const name = String(
-    obj.name || obj.categoryName || obj.slug || obj.categoryId || obj._id || obj.id || ""
-  )
-    .trim()
-    .toLowerCase();
-  const fallbackKey = [storeId, name].filter(Boolean).join("|");
+  const categoryId = String(obj.categoryId || obj._id || obj.id || "").trim();
+  const slug = slugifyValue(String(obj.slug || obj.categorySlug || "").trim());
+  const name = slugifyValue(String(obj.name || obj.categoryName || "").trim());
 
-  return [rowId, fallbackKey].filter(Boolean);
+  const keys: string[] = [];
+
+  if (categoryId && !categoryId.startsWith("temp-category")) {
+    keys.push(`category-id:${categoryId}`);
+  }
+
+  if (slug) keys.push(`category-slug:${slug}`);
+  if (name) keys.push(`category-name:${name}`);
+
+  return keys.filter(Boolean);
 }
 
 function sameCategoryRow(first: unknown, second: unknown) {
@@ -833,14 +851,124 @@ function buildProductApiPayload(product: Product): Product {
   } as Product;
 }
 
+function uniqueNormalizedStoreIds(values: unknown[]) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  function add(value: unknown) {
+    const storeId = normalizeStoreValue(value);
+
+    if (!storeId || storeId === "all" || seen.has(storeId)) return;
+
+    seen.add(storeId);
+    output.push(storeId);
+  }
+
+  values.forEach((value) => {
+    if (Array.isArray(value)) {
+      value.forEach(add);
+      return;
+    }
+
+    add(value);
+  });
+
+  return output;
+}
+
+function normalizeCategoryStoreConfig(config: unknown, fallbackCategory?: any) {
+  if (!config || typeof config !== "object") return null;
+
+  const obj = config as any;
+  const storeId = normalizeStoreValue(obj.storeId || obj.storeSlug || obj.store);
+
+  if (!storeId || storeId === "all") return null;
+
+  const available = obj.available !== false && obj.isAvailable !== false;
+
+  return {
+    ...obj,
+    _id: obj._id ? String(obj._id) : obj._id,
+    id: String(obj.storeConfigId || obj.configId || obj._id || obj.id || ""),
+    storeConfigId: String(obj.storeConfigId || obj.configId || obj._id || obj.id || ""),
+    configId: String(obj.configId || obj.storeConfigId || obj._id || obj.id || ""),
+    categoryId: String(
+      obj.categoryId ||
+        fallbackCategory?.categoryId ||
+        fallbackCategory?._id ||
+        fallbackCategory?.id ||
+        ""
+    ).trim(),
+    storeId,
+    storeSlug: storeId,
+    categoryName: String(
+      obj.categoryName || fallbackCategory?.name || fallbackCategory?.categoryName || ""
+    ).trim(),
+    categorySlug: slugifyValue(
+      String(obj.categorySlug || fallbackCategory?.slug || fallbackCategory?.name || "")
+    ),
+    available,
+    isAvailable: available,
+    status: obj.status === "Inactive" ? "Inactive" : obj.status || "Active",
+    sortOrder: Number(obj.sortOrder ?? fallbackCategory?.sortOrder ?? 0),
+  };
+}
+
 function normalizeCategory(
   category: CategoryWithMultiStore
 ): CategoryWithMultiStore {
+  const categoryObj = category as any;
+
+  const storeConfigs = safeArray<unknown>(categoryObj.storeConfigs)
+    .map((config) => normalizeCategoryStoreConfig(config, categoryObj))
+    .filter(Boolean) as any[];
+
+  const storeIds = uniqueNormalizedStoreIds([
+    categoryObj.storeIds,
+    categoryObj.storeSlugs,
+    categoryObj.stores,
+    categoryObj.selectedStores,
+    categoryObj.selectedStoreIds,
+    categoryObj.selectedStoreSlugs,
+    storeConfigs.map((config) => config.storeId),
+    categoryObj.storeId,
+    categoryObj.storeSlug,
+    categoryObj.store,
+  ]);
+
+  const primaryStoreId = storeIds[0] || "";
+  const categoryId = String(
+    categoryObj.categoryId || categoryObj._id || categoryObj.id || ""
+  ).trim();
+
+  const name = String(categoryObj.name || categoryObj.categoryName || "").trim();
+  const slug = slugifyValue(String(categoryObj.slug || categoryObj.categorySlug || name));
+
   return {
     ...category,
-    storeId: String(category.storeId || "").trim(),
+    _id: categoryObj._id,
+    id: String(categoryObj.id || categoryId || slug || name || "").trim(),
+    categoryId,
+    name,
+    slug,
+    storeId: primaryStoreId,
+    storeSlug: primaryStoreId,
+    storeIds,
+    storeSlugs: storeIds,
+    stores: storeIds,
+    selectedStores: storeIds,
+    selectedStoreIds: storeIds,
+    selectedStoreSlugs: storeIds,
+    storeConfigs,
+    storeConfigId: String(categoryObj.storeConfigId || storeConfigs[0]?.storeConfigId || ""),
+    configId: String(categoryObj.configId || storeConfigs[0]?.configId || ""),
+    storeConfigIds: storeConfigs.map((config) => config.storeConfigId).filter(Boolean),
+    configIds: storeConfigs.map((config) => config.configId).filter(Boolean),
+    available: categoryObj.available !== false && categoryObj.isAvailable !== false,
+    isAvailable: categoryObj.available !== false && categoryObj.isAvailable !== false,
+    status: category.status || "Active",
     sortOrder: Number(category.sortOrder || 1),
-  };
+  } as CategoryWithMultiStore;
 }
 
 function normalizeModifierOption(
@@ -1390,85 +1518,66 @@ export function useMenuCrud() {
   const addCategory = async (category: CategoryWithMultiStore) => {
     const oldCategories = categories;
 
-    const storeIds = Array.isArray(category.storeIds)
-      ? category.storeIds
-          .map((item) => normalizeStoreValue(item))
-          .filter((item) => item && item !== "all")
-      : [];
-
-    const targetStoreIds = Array.from(
-      new Set(
-        storeIds.length
-          ? storeIds
-          : ([normalizeStoreValue(category.storeId)].filter(Boolean) as string[])
-      )
-    ) as string[];
+    const targetStoreIds = uniqueNormalizedStoreIds([
+      category.storeIds,
+      (category as any).storeSlugs,
+      (category as any).stores,
+      (category as any).selectedStores,
+      (category as any).selectedStoreIds,
+      (category as any).selectedStoreSlugs,
+      category.storeId,
+      (category as any).storeSlug,
+      (category as any).store,
+    ]);
 
     if (!targetStoreIds.length) {
       throw new Error("Please select at least one store.");
     }
 
-    const baseCategory = { ...category };
-    delete baseCategory.storeIds;
-
-    const createdAt = Date.now();
-
-    const categoryPayloads: Category[] = targetStoreIds.map((storeId, index) => {
-      const nextSortOrder = getNextCategorySortOrder(
-        storeId,
-        categories,
-        []
-      );
-
-      return normalizeCategory({
-        ...baseCategory,
-        id: String((baseCategory as any).id || `temp-category-${createdAt}-${index}`),
-        storeId,
-        sortOrder: Number(baseCategory.sortOrder || nextSortOrder),
-      }) as Category;
-    });
-
-    const optimisticCategories = categoryPayloads.map((payload, index) =>
-      addTempId(payload, `temp-category-${createdAt}-${index}`) as Category
+    const nextSortOrder = getNextCategorySortOrder(
+      targetStoreIds[0],
+      categories,
+      []
     );
 
-    // Add all selected stores to UI at once.
-    // Do not update state after each API request, otherwise table briefly shows only the first store.
-    setCategories((prev) => upsertCategoryRows(prev, optimisticCategories));
+    const tempId = `temp-category-${Date.now()}`;
 
-    const savedCategories: Category[] = [];
-    let lastNonDuplicateError: unknown = null;
+    const payload = normalizeCategory({
+      ...category,
+      id: String((category as any).id || tempId),
+      storeId: targetStoreIds[0],
+      storeIds: targetStoreIds,
+      storeSlugs: targetStoreIds,
+      stores: targetStoreIds,
+      selectedStores: targetStoreIds,
+      selectedStoreIds: targetStoreIds,
+      selectedStoreSlugs: targetStoreIds,
+      sortOrder: Number(category.sortOrder || nextSortOrder),
+    } as CategoryWithMultiStore) as Category;
 
-    for (const payload of categoryPayloads) {
-      try {
-        const savedCategory = normalizeCategory(
-          await apiCreate<Category>("categories", payload)
-        ) as Category;
+    const optimisticCategory = addTempId(payload, tempId) as Category;
 
-        savedCategories.push(savedCategory);
-      } catch (error) {
-        if (isDuplicateCategoryError(error)) {
-          continue;
-        }
+    // Save one category once with all selected storeIds.
+    // Do not POST one-by-one per store; that is what caused 3 badges to become 1/2 after refetch.
+    setCategories((prev) => upsertCategoryRows(prev, [optimisticCategory]));
 
-        lastNonDuplicateError = error;
-        break;
-      }
-    }
+    try {
+      const savedCategory = normalizeCategory(
+        await apiCreate<Category>("categories", payload)
+      ) as Category;
 
-    if (lastNonDuplicateError) {
+      setCategories((prev) =>
+        upsertCategoryRows(
+          prev.filter((item: any) => String(item.id || "") !== tempId),
+          [savedCategory]
+        )
+      );
+
+      return savedCategory;
+    } catch (error) {
       setCategories(oldCategories);
-      throw lastNonDuplicateError;
+      throw error;
     }
-
-    const finalCategories = savedCategories.length
-      ? savedCategories
-      : optimisticCategories;
-
-    // Replace/merge once after all store configs are saved.
-    setCategories((prev) => upsertCategoryRows(prev, finalCategories));
-
-    return finalCategories;
   };
 
   const updateCategory = async (category: Category) => {
