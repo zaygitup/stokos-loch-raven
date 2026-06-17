@@ -3,7 +3,8 @@ import "server-only";
 import connectDB from "@/lib/mongodb";
 import StoreMenu from "@/models/storemenu";
 import { getStoreMenuProducts } from "@/lib/server/menuproducts";
-import { getStoreMenuCategories } from "@/lib/server/menucategories";
+import { getStoreMenuCategoriesFromDB } from "@/lib/server/menucategories";
+import { clearStoreMenuSnapshotCache } from "@/lib/server/storemenu-snapshot";
 
 export type MenuCategoryTab = {
   id: string;
@@ -240,7 +241,6 @@ export function buildSnapshotCategoriesFromAdmin(
     .filter((category) => {
       if (!category.id || !category.name) return false;
       if (isPopularCategory(category)) return false;
-      if (isMenuCouponsCategory(category)) return false;
 
       const key = slugify(category.slug || category.id || category.name);
       if (!key || seen.has(key)) return false;
@@ -267,7 +267,9 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
   try {
     const [products, adminCategories] = await Promise.all([
       getStoreMenuProducts(cleanStoreSlug),
-      getStoreMenuCategories(cleanStoreSlug),
+      // Direct DB read intentionally used here so rebuild gets latest categories
+      // immediately, without waiting for Next unstable_cache revalidation.
+      getStoreMenuCategoriesFromDB(cleanStoreSlug),
     ]);
 
     const safeProducts = Array.isArray(products) ? products : [];
@@ -304,6 +306,8 @@ export async function rebuildStoreMenu(storeSlug: string, reason = "admin-change
         returnDocument: "after",
       }
     ).lean<any>();
+
+    clearStoreMenuSnapshotCache(cleanStoreSlug);
 
     return {
       storeSlug: cleanStoreSlug,

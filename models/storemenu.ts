@@ -18,11 +18,14 @@ const StoreMenuSchema = new Schema(
       index: true,
     },
 
+    // Snapshot categories now contain all active documents from categories collection
+    // plus the special Popular Menu Items category when popular products exist.
     categories: {
       type: Array,
       default: [],
     },
 
+    // Snapshot products are store-specific and come from StoreMenu/admin assignment.
     products: {
       type: Array,
       default: [],

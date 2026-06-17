@@ -103,13 +103,6 @@ function isPopularCategory(category: Partial<MenuCategoryTab>) {
   );
 }
 
-function isMenuCouponsCategory(category: Partial<MenuCategoryTab>) {
-  return [category.id, category.slug, category.name]
-    .filter(Boolean)
-    .map((value) => slugify(value))
-    .some((key) => MENU_COUPON_CATEGORY_KEYS.has(key));
-}
-
 function getProductCategoryName(product: any) {
   if (typeof product?.category === "string") return cleanString(product.category);
 
@@ -239,7 +232,7 @@ function normalizeCategory(category: Partial<MenuCategoryTab>): MenuCategoryTab 
   };
 }
 
-function normalizeRealCategories(categories: Partial<MenuCategoryTab>[]) {
+function normalizeInputCategories(categories: Partial<MenuCategoryTab>[]) {
   const seen = new Set<string>();
 
   return (Array.isArray(categories) ? categories : [])
@@ -247,7 +240,6 @@ function normalizeRealCategories(categories: Partial<MenuCategoryTab>[]) {
     .filter((category) => {
       if (!category.id || !category.name) return false;
       if (isPopularCategory(category)) return false;
-      if (isMenuCouponsCategory(category)) return false;
 
       const key = slugify(category.slug || category.id || category.name);
       if (!key || seen.has(key)) return false;
@@ -286,7 +278,7 @@ function deriveCategoriesFromProducts(products: any[]): MenuCategoryTab[] {
     .filter((category) => {
       if (!category.id || !category.name) return false;
       if (isPopularCategory(category)) return false;
-      if (isMenuCouponsCategory(category)) return false;
+      if (MENU_COUPON_CATEGORY_KEYS.has(slugify(category.slug || category.id))) return false;
       if (seen.has(category.id)) return false;
 
       seen.add(category.id);
@@ -298,23 +290,15 @@ function buildMenuCategories(
   inputCategories: Partial<MenuCategoryTab>[],
   products: any[]
 ) {
-  const seen = new Set<string>();
-
-  const realCategories = [
-    ...normalizeRealCategories(inputCategories),
-    ...deriveCategoriesFromProducts(products),
-  ].filter((category) => {
-    const key = slugify(category.slug || category.id || category.name);
-    if (!key || seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
+  // Main fix: when snapshot/categories collection has categories, use those
+  // categories as the source of truth. Do NOT derive/filter the menu tabs from
+  // products. Empty categories will therefore still render.
+  const realCategories = normalizeInputCategories(inputCategories);
 
   const safeRealCategories = realCategories.length
     ? realCategories
     : products.length
-      ? [DEFAULT_CATEGORY]
+      ? deriveCategoriesFromProducts(products)
       : [];
 
   const hasPopularProducts = products.some((product) => isProductPopular(product));

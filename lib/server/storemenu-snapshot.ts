@@ -87,8 +87,6 @@ export async function getStoreMenuSnapshot(
   try {
     await connectDB();
 
-    // No manual Promise.race / read-timeout here.
-    // Let MongoDB driver use its connection settings so slow Atlas reads do not return fake empty menu data.
     const snapshot = await StoreMenu.findOne({
       storeSlug: cleanStoreSlug,
     })
@@ -129,7 +127,6 @@ export async function getStoreMenuSnapshot(
     setCachedSnapshot(cleanStoreSlug, result);
     return result;
   } catch (error: any) {
-    // console.error in Next dev opens the red overlay. Keep this as warn while debugging.
     console.warn(
       `StoreMenu snapshot read failed for ${cleanStoreSlug}:`,
       error?.message || error

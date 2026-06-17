@@ -69,7 +69,7 @@ export default function Categories({ initialCategories = [] }: CategoriesProps) 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Important: this component no longer calls /api/store/[slug]/menu-categories.
-  // Categories are rendered from the server-provided initialCategories only.
+  // Categories are rendered from the server-provided snapshot categories only.
   const categories = useMemo(
     () => normalizeCategories(initialCategories),
     [initialCategories]
