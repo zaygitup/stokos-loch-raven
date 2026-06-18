@@ -1,7 +1,6 @@
 import "server-only";
 
 import mongoose from "mongoose";
-import { unstable_cache } from "next/cache";
 import connectDB from "@/lib/mongodb";
 import Store from "@/models/store";
 import Category from "@/models/category";
@@ -239,15 +238,6 @@ async function getStoreMenuCategoriesFromDB(
   );
 }
 
-const getCachedStoreMenuCategories = unstable_cache(
-  getStoreMenuCategoriesFromDB,
-  ["store-menu-categories-v9"],
-  {
-    revalidate: 30,
-    tags: ["store-menu-categories", "store-menu"],
-  }
-);
-
 export async function getStoreMenuCategories(storeSlug: string) {
-  return getCachedStoreMenuCategories(normalizeStoreId(storeSlug));
+  return getStoreMenuCategoriesFromDB(normalizeStoreId(storeSlug));
 }

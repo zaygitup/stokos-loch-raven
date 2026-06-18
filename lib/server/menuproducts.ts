@@ -38,8 +38,8 @@ export type FrontendMenuProduct = {
 export type FrontendMenuProductDetails = FrontendMenuProduct;
 
 const FALLBACK_IMAGE = "/images/placeholder-food.png";
-const MENU_CACHE_TTL_MS = 3_000;
-const DETAIL_CACHE_TTL_MS = 20_000;
+const MENU_CACHE_TTL_MS = 1_000;
+const DETAIL_CACHE_TTL_MS = 5_000;
 
 const MODIFIER_GROUP_COLLECTIONS = [
   "modifiergroups",

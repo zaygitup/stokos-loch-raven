@@ -43,7 +43,7 @@ interface MenuSectionsClientProps {
   initialMenuData?: StoreMenuApiData;
 }
 
-const MENU_POLL_INTERVAL_MS = 5_000;
+const MENU_POLL_INTERVAL_MS = 2_000;
 
 function pickFirstArray<T>(...arrays: (T[] | undefined)[]) {
   const found = arrays.find((item) => Array.isArray(item));
@@ -261,6 +261,7 @@ export default function MenuSectionsClient({
             headers: {
               Accept: "application/json",
               "Cache-Control": "no-cache",
+              Pragma: "no-cache",
             },
             signal: controller.signal,
           }
