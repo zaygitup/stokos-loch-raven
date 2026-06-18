@@ -215,6 +215,10 @@ export default function Footer({ store }: FooterProps) {
             <Link href="#" className="hover:text-white">
               Terms
             </Link>
+
+            <Link href="/admin/sign-in" className="text-white/30 text-xs hover:text-white/50 transition">
+              Staff Login
+            </Link>
           </div>
         </div>
       </div>

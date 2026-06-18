@@ -161,6 +161,10 @@ export default function MainFooter() {
             <a href="#contact" className="transition hover:text-white">
               Contact
             </a>
+
+            <Link href="/admin/sign-in" className="transition hover:text-white/50 text-white/30 text-xs">
+              Staff Login
+            </Link>
           </div>
         </div>
       </div>
