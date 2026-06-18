@@ -1,78 +1,98 @@
-# Go-Live Status — Production ASAP
+# Go-Live Status — Session Tracker
 
-**Last updated:** 2026-06-18  
-**Git commit on `main`:** `6f78240` (pushed to `azank1/stokos-loch-raven`)  
-**Launch URL:** `https://stokos-loch-raven-git-main-bayentlabs.vercel.app`
-
----
-
-## Completed (engineering)
-
-| Task | Status | Notes |
-|------|--------|-------|
-| Ship code | Done | Pushed `6f78240` to origin |
-| MongoDB indexes | Done | Ran on configured cluster (`.env.local`) |
-| Promo seed | Done | `STOKOS10`, `WELCOME5` in MongoDB |
-| Go-live docs | Done | [go-live-handoff.md](./go-live-handoff.md), [go-live-checklist.md](./go-live-checklist.md) |
-| Vercel env template | Done | `npm run vercel:env-template` |
+**Last updated:** 2026-06-19  
+**Launch URL:** `https://stokos-loch-raven-git-main-bayentlabs.vercel.app`  
+**Git:** `a2f8684` on `azank1/stokos-loch-raven` `main`  
+**Tomorrow target:** Public TEST QA (Stripe test card, no live payments)
 
 ---
 
-## Blocked — requires dashboard / external owner
+## Session progress
 
-| Task | Owner | Blocker | Action |
-|------|-------|---------|--------|
-| Disable Deployment Protection | **Azan** | Vercel dashboard | Settings → Deployment Protection → OFF for Production. **Currently all routes return 401.** |
-| Set Vercel env vars | **Azan** | Vercel dashboard | Run `npm run vercel:env-template`, fill values, redeploy |
-| Clerk prod + staff | **Azan** | Clerk dashboard | [azan-clerk-vercel-checklist.md](./azan-clerk-vercel-checklist.md) |
-| Prod MongoDB cluster | **Abassi** | Atlas | [abassi-mongodb-checklist.md](./abassi-mongodb-checklist.md) |
-| Stripe TEST webhook | **Abassi** | Stripe dashboard | Endpoint: `{BASE_URL}/api/webhooks/stripe` |
-| Full menu on prod DB | **Abassi + Azan** | Prod URI | `npm run import:menu` when prod URI in Vercel |
-| Public QA + test checkout | **Azan** | After protection OFF + env | [qa-checklist.md](./qa-checklist.md) |
-| Stokos bank link | **Stokos** | Stripe Express portal | [client-onboarding.md](./client-onboarding.md) |
-| Flip to LIVE Stripe | **Abassi** | After bank + QA | Set `sk_live_`, `acct_`, live webhook |
+| Session | Owner | Status | Exit criteria |
+|---------|-------|--------|---------------|
+| **1** — Vercel public | Azan | **PENDING** | `npm run check:session1` passes (200 not 401) |
+| **2** — Clerk + staff | Azan | **PENDING** | Admin sign-in works on prod URL |
+| **Abassi handoff** | Azan → Abassi | **READY TO SEND** | [abassi-handoff-message.md](./abassi-handoff-message.md) |
+| **3** — Env swap + QA | Azan | **BLOCKED** | Waiting on Abassi Mongo + Stripe TEST |
+| **Sign-off** | Azan | **PENDING** | [qa-go-live-results.md](./qa-go-live-results.md) |
 
 ---
 
-## Smoke test results
+## Latest production check
 
-### Production (Bayent Labs) — after deploy `6f78240`
-
-```
-SMOKE_BASE_URL=https://stokos-loch-raven-git-main-bayentlabs.vercel.app npm run smoke:test
-→ 8/8 PASS (all 401 — Deployment Protection still ON)
+```bash
+npm run check:session1
 ```
 
-**Next:** Disable protection → re-run smoke → expect **200** on all routes.
+| Route | Last status | Expected after Session 1 |
+|-------|-------------|---------------------------|
+| `/` | 401 | 200 |
+| `/track` | 401 | 200 |
+| `/admin/sign-in` | 401 | 200 |
+| `/api/store/towson/menu` | 401 | 200 |
 
-### Local (when `npm run dev` is running)
+**Blocker:** Vercel Deployment Protection still ON.
 
+---
+
+## Azan — do now
+
+1. Complete [azan-session-checklist.md](./azan-session-checklist.md) **Session 1**
+2. Run `npm run check:session1` — must pass before Session 2
+3. Send [abassi-handoff-message.md](./abassi-handoff-message.md) to Abassi
+4. Complete **Session 2** (Clerk)
+5. When Abassi replies → **Session 3**
+
+---
+
+## Abassi — waiting on
+
+- [ ] Prod `MONGODB_URI` + migrated menu (3 stores)
+- [ ] Stripe TEST webhook on bayentlabs URL
+- [ ] `sk_test_...` + `whsec_...` to Azan
+
+---
+
+## Engineering complete (no code changes needed)
+
+- All features on `main` (`a2f8684`)
+- Session checklists + Abassi message docs
+- `npm run check:session1`, `npm run smoke:test`, `npm run vercel:env-template`
+- Local smoke: **8/8 PASS**
+
+---
+
+## Session log (fill in during back-and-forth)
+
+### Session 1
 ```
-npm run smoke:test
-→ expect 200 on all routes
+Date:
+Done:
+Blockers:
+Vercel redeployed:
+check:session1 result:
+```
+
+### Session 2
+```
+Date:
+Done:
+Blockers:
+Admin sign-in on prod: yes/no
+```
+
+### Session 3
+```
+Date:
+Abassi secrets received: yes/no
+QA checklist: pass/fail
+Test order STK-:
 ```
 
 ---
 
-## Immediate next steps for Azan (15 min)
+## After TEST QA passes (not tomorrow)
 
-1. Vercel → disable Deployment Protection on Production
-2. `npm run vercel:env-template` → paste into Vercel env (use current `.env.local` values for Mongo/Stripe/Clerk until Abassi prod URI)
-3. Redeploy Production
-4. Re-run: `SMOKE_BASE_URL=https://stokos-loch-raven-git-main-bayentlabs.vercel.app npm run smoke:test`
-5. Run [qa-checklist.md](./qa-checklist.md) with card `4242 4242 4242 4242`
-
----
-
-## Immediate next steps for Abassi
-
-1. Prod Atlas URI → Azan for Vercel
-2. Stripe test webhook on bayentlabs URL
-3. Express onboarding link → Stokos (parallel)
-
----
-
-## Immediate next steps for Stokos
-
-1. Complete Stripe bank onboarding when link arrives
-2. Send manager emails to Azan
+- Stokos Stripe bank link ([stokos-stripe-bank-onboarding.md](./stokos-stripe-bank-onboarding.md))
+- LIVE flip ([flip-to-live-checklist.md](./flip-to-live-checklist.md))

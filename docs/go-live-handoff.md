@@ -1,6 +1,11 @@
 # Go-Live Handoff — External Tasks
 
-Track production launch tasks that require Vercel dashboard, Abassi, or Stokos.  
+Track production launch tasks that require Vercel dashboard, Abassi, or Stokos.
+
+**Azan step-by-step:** [azan-session-checklist.md](./azan-session-checklist.md)  
+**Copy-paste for Abassi:** [abassi-handoff-message.md](./abassi-handoff-message.md)  
+**Live status:** [go-live-status.md](./go-live-status.md)
+
 **Launch URL:** `https://stokos-loch-raven-git-main-bayentlabs.vercel.app`  
 **Git:** `azank1/stokos-loch-raven` → `main`
 

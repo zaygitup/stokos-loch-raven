@@ -1,54 +1,86 @@
-# QA Results — Go-Live (TEST mode)
+# QA Results — Go-Live (TEST Public QA)
 
-**Date:** 2026-06-18  
-**Commit:** `6f78240`  
-**Environment:** local (localhost:3000) + production URL (blocked)
-
----
-
-## Automated smoke
-
-| Environment | Command | Result |
-|-------------|---------|--------|
-| Local | `npm run smoke:test` | **8/8 PASS** (200/307) |
-| Production | `SMOKE_BASE_URL=https://stokos-loch-raven-git-main-bayentlabs.vercel.app npm run smoke:test` | **8/8 PASS** but all **401** — Deployment Protection ON |
+**Target:** Public Bayent Labs URL + Stripe TEST checkout  
+**Sign-off:** PENDING — complete after Session 3
 
 ---
 
-## Local functional checks (automated)
+## Automated checks
 
-| Check | Result |
-|-------|--------|
-| Menu API `/api/store/towson/menu` | 200 — 7 products, 25 categories |
-| Promo codes seeded | `STOKOS10`, `WELCOME5` |
-| MongoDB indexes | Verified via `scripts/mongodb-indexes.js` |
-| Build | Passes (`npm run build`) |
+| Check | Local | Production |
+|-------|-------|------------|
+| `npm run smoke:test` | PASS 8/8 (200) | FAIL — all 401 until Session 1 |
+| `npm run check:session1` | N/A | FAIL — Deployment Protection ON |
+| Build `npm run build` | PASS | — |
+| MongoDB indexes | PASS (dev cluster) | PENDING (Abassi prod) |
+| Promos seeded | PASS `STOKOS10`, `WELCOME5` | PENDING (prod URI) |
 
 ---
 
-## Manual QA — local (ready to run)
+## Session sign-off
 
-Use [qa-checklist.md](./qa-checklist.md) on `http://localhost:3000`:
+| Session | Criteria | Status | Date | Verified by |
+|---------|----------|--------|------|-------------|
+| 1 — Vercel public | `check:session1` → 200 | PENDING | | |
+| 2 — Clerk admin | Sign-in on prod URL | PENDING | | |
+| 3 — Full QA | [qa-checklist.md](./qa-checklist.md) all pass | PENDING | | |
 
-- [ ] Add items with modifiers → cart
-- [ ] Pickup / delivery flow
-- [ ] Checkout `4242 4242 4242 4242`
-- [ ] Webhook → admin order Confirmed/Paid
-- [ ] `/track?orderNumber=STK-...`
-- [ ] Admin status advance + cancel
+---
+
+## Manual QA — production ([qa-checklist.md](./qa-checklist.md))
+
+Run on `https://stokos-loch-raven-git-main-bayentlabs.vercel.app` after Sessions 1–3.
+
+### 4.1 Customer flow
+
+- [ ] Menu loads: `/store/towson`, `/store/york`, `/store/liberty`
+- [ ] Add items with modifiers, size, toppings, note
+- [ ] Pickup vs delivery; delivery address required
+- [ ] Minimum order enforced when configured
+- [ ] Tax and delivery fee in cart/checkout
+- [ ] Stripe Checkout `4242 4242 4242 4242`
+- [ ] Success page shows order summary
+- [ ] `/track` finds order by number
+
+### 4.2 Payment + data
+
+- [ ] Webhook → **Confirmed / Paid** within ~30s
+- [ ] Order in `/admin/orders` with correct branch and amounts
+- [ ] Abandoned checkout → **Awaiting Payment** in admin
+- [ ] Connect transfer N/A for TEST QA (no Connect env)
+
+### 4.3 Admin auth
+
+- [ ] Allowed email → `/admin` loads
+- [ ] Non-allowed email → unauthorized
+- [ ] Signed out → redirect sign-in
+- [ ] Footer Staff Login works
+
+### 4.4 Admin operations
+
+- [ ] Branch pills filter dashboard + orders
+- [ ] Status advance: Placed → Confirmed → Preparing → Ready → Completed
+- [ ] Cancel unpaid order
+- [ ] Cancel paid order shows refund warning
+
+### 4.5 Account + promos (added)
+
 - [ ] Sign in → `/account/orders` → reorder
-- [ ] Promo `STOKOS10` in cart
+- [ ] Promo `STOKOS10` applies in cart
 
 ---
 
-## Manual QA — production (blocked)
+## TEST public QA sign-off
 
-**Blocked until:** Vercel Deployment Protection OFF + env vars set per [go-live-handoff.md](./go-live-handoff.md)
+| Role | Name | Date | Signed |
+|------|------|------|--------|
+| Engineering (Azan) | | | [ ] |
+| Operations (Abassi) | | | [ ] |
 
-Repeat full [qa-checklist.md](./qa-checklist.md) on bayentlabs URL after unblock.
+**Notes:**
 
 ---
 
-## Live $1 test
+## Live $1 test (after TEST sign-off + Stokos bank)
 
-**Pending:** Stokos Stripe bank onboarding + LIVE keys ([go-live-handoff.md](./go-live-handoff.md) Phase 6)
+See [flip-to-live-checklist.md](./flip-to-live-checklist.md) — scheduled for later, not tomorrow.

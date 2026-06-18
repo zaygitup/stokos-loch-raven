@@ -8,9 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "smoke:test": "node scripts/smoke-test.mjs",
+    "check:session1": "node scripts/check-session1.mjs",
     "import:menu": "node --env-file=.env.local scripts/import-menu-csv.js",
     "seed:promos": "node --env-file=.env.local scripts/seed-promo-codes.js",
-    "vercel:env-template": "node scripts/vercel-env-template.mjs"
+    "vercel:env-template": "node scripts/vercel-env-template.mjs",
+    "rebuild:menus": "node --env-file=.env.local scripts/rebuild-store-menus.js"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.5",
