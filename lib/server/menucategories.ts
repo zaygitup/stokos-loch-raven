@@ -244,7 +244,7 @@ const getCachedStoreMenuCategories = unstable_cache(
   ["store-menu-categories-v8"],
   {
     revalidate: 30,
-    tags: ["store-menu-categories", "store-menu"],
+    tags: ["store-menu-categories", "store-menu"],     
   }
 );
 
