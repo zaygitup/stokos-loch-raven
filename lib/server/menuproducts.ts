@@ -38,7 +38,7 @@ export type FrontendMenuProduct = {
 export type FrontendMenuProductDetails = FrontendMenuProduct;
 
 const FALLBACK_IMAGE = "/images/placeholder-food.png";
-const MENU_CACHE_TTL_MS = 30_000;
+const MENU_CACHE_TTL_MS = 3_000;
 const DETAIL_CACHE_TTL_MS = 20_000;
 
 const MODIFIER_GROUP_COLLECTIONS = [
@@ -820,19 +820,25 @@ async function getStoreMenuProductsFromDB(
 }
 
 export async function getStoreMenuProducts(
-  storeSlug: string
+  storeSlug: string,
+  options: { bypassCache?: boolean } = {}
 ): Promise<FrontendMenuProduct[]> {
   const cleanSlug = normalizeStoreId(storeSlug);
 
   if (!cleanSlug) return [];
 
   const cacheKey = `menu-products:${cleanSlug}`;
-  const cached = memGet<FrontendMenuProduct[]>(cacheKey);
 
-  if (cached) return cached;
+  if (!options.bypassCache) {
+    const cached = memGet<FrontendMenuProduct[]>(cacheKey);
+
+    if (cached) return cached;
+  }
 
   // Do not use unstable_cache here.
   // Next.js data cache fails when payload is over 2MB.
+  // Short in-memory TTL keeps polling fast but still allows admin changes
+  // to appear without a manual customer-side page refresh.
   const data = await getStoreMenuProductsFromDB(cleanSlug);
 
   memSet(cacheKey, data, MENU_CACHE_TTL_MS);

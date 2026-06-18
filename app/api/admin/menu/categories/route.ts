@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
-import { revalidateTag } from "next/cache";
 import connectDB from "@/lib/mongodb";
 import Category from "@/models/category";
 import CategoryStoreConfig from "@/models/categorystoreconfig";
-import { invalidateMenuCategories } from "@/lib/server/menu-cache";
+import { invalidateStoreMenu } from "@/lib/server/menu-cache";
 import { ensureCategoryStoreConfigIndexes } from "@/lib/server/category-store-config-indexes";
 
 export const runtime = "nodejs";
@@ -630,12 +629,58 @@ function getErrorMessage(error: any) {
   return "Something went wrong.";
 }
 
-function invalidateCategoryCache() {
-  invalidateMenuCategories();
-  // FIX: revalidateTag only accepts one argument in Next.js 13+.
-  // Passing "max" as a second argument was silently ignored or caused errors.
-  revalidateTag("store-menu-categories", "max");
-  revalidateTag("store-menu" , "max");
+function collectStoreIdsFromSources(...sources: any[]) {
+  const ids = new Set<string>();
+
+  const add = (value: unknown) => {
+    const clean = normalizeStoreId(value);
+    if (!clean || ["all", "all-stores", "all-store"].includes(clean)) return;
+    ids.add(clean);
+  };
+
+  const visit = (value: any) => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (typeof value !== "object") {
+      add(value);
+      return;
+    }
+
+    add(value.storeId);
+    add(value.storeSlug);
+    add(value.store);
+
+    [
+      value.storeIds,
+      value.storeSlugs,
+      value.stores,
+      value.selectedStores,
+      value.selectedStoreIds,
+      value.selectedStoreSlugs,
+      value.storeConfigs,
+      value.configs,
+    ].forEach(visit);
+  };
+
+  sources.forEach(visit);
+
+  return Array.from(ids);
+}
+
+function invalidateCategoryCache(...sources: any[]) {
+  const storeIds = collectStoreIdsFromSources(...sources);
+
+  if (!storeIds.length) {
+    invalidateStoreMenu();
+    return;
+  }
+
+  storeIds.forEach((storeId) => invalidateStoreMenu(storeId));
 }
 
 export async function GET(req: Request) {
@@ -687,7 +732,7 @@ export async function POST(req: Request) {
       storeIds,
     );
 
-    invalidateCategoryCache();
+    invalidateCategoryCache(body, freshConfigs);
 
     return NextResponse.json(
       {
@@ -783,7 +828,7 @@ export async function PATCH(req: Request) {
       freshConfigs = await dedupeAndRepairCategoryConfigs(category);
     }
 
-    invalidateCategoryCache();
+    invalidateCategoryCache(body, freshConfigs);
 
     return NextResponse.json({
       success: true,
@@ -825,7 +870,7 @@ export async function DELETE(req: Request) {
       }
 
       await CategoryStoreConfig.deleteOne({ _id: config._id });
-      invalidateCategoryCache();
+      invalidateCategoryCache(config);
 
       return NextResponse.json({
         success: true,
@@ -860,7 +905,7 @@ export async function DELETE(req: Request) {
       });
 
       await dedupeAndRepairCategoryConfigs(category);
-      invalidateCategoryCache();
+      invalidateCategoryCache(storeId);
 
       return NextResponse.json({
         success: true,

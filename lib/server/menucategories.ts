@@ -241,10 +241,10 @@ async function getStoreMenuCategoriesFromDB(
 
 const getCachedStoreMenuCategories = unstable_cache(
   getStoreMenuCategoriesFromDB,
-  ["store-menu-categories-v8"],
+  ["store-menu-categories-v9"],
   {
     revalidate: 30,
-    tags: ["store-menu-categories", "store-menu"],     
+    tags: ["store-menu-categories", "store-menu"],
   }
 );
 

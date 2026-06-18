@@ -7,8 +7,7 @@ import Category from "@/models/category";
 import CategoryStoreConfig from "@/models/categorystoreconfig";
 import ModifierGroup from "@/models/modifiergroup";
 import UpsellRule from "@/models/upsellrule";
-import { invalidateMenuProducts } from "@/lib/server/menu-cache";
-import { rebuildStoreMenusAfterAdminChange } from "@/lib/server/storemenu-admin";
+import { invalidateStoreMenu } from "@/lib/server/menu-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -991,6 +990,60 @@ async function getProductConfigs(productIds: string[], query: any = {}) {
     .toArray();
 }
 
+function collectStoreIdsFromSources(...sources: any[]) {
+  const ids = new Set<string>();
+
+  const add = (value: unknown) => {
+    const clean = normalizeStoreId(value);
+    if (!clean || ["all", "all-stores", "all-store"].includes(clean)) return;
+    ids.add(clean);
+  };
+
+  const visit = (value: any) => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (typeof value !== "object") {
+      add(value);
+      return;
+    }
+
+    add(value.storeId);
+    add(value.storeSlug);
+    add(value.store);
+
+    [
+      value.storeIds,
+      value.storeSlugs,
+      value.stores,
+      value.selectedStores,
+      value.selectedStoreIds,
+      value.selectedStoreSlugs,
+      value.storeConfigs,
+      value.configs,
+    ].forEach(visit);
+  };
+
+  sources.forEach(visit);
+
+  return Array.from(ids);
+}
+
+function invalidateProductMenuCache(...sources: any[]) {
+  const storeIds = collectStoreIdsFromSources(...sources);
+
+  if (!storeIds.length) {
+    invalidateStoreMenu();
+    return;
+  }
+
+  storeIds.forEach((storeId) => invalidateStoreMenu(storeId));
+}
+
 function getErrorMessage(error: any) {
   if (error?.code === 11000) {
     return "Product config already exists for this store.";
@@ -1138,8 +1191,7 @@ export async function POST(req: Request) {
     const configs = await getProductConfigs([String(product._id)]);
     const data = formatProductWithConfigs(product, configs, normalizeStoreId(body.storeId));
 
-    invalidateMenuProducts();
-    await rebuildStoreMenusAfterAdminChange(body, product, savedConfigs, configs);
+    invalidateProductMenuCache(body, savedConfigs, configs);
 
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error: any) {
@@ -1209,8 +1261,7 @@ export async function PATCH(req: Request) {
     const configs = await getProductConfigs([String(product._id)]);
     const data = formatProductWithConfigs(product, configs, normalizeStoreId(body.storeId));
 
-    invalidateMenuProducts();
-    await rebuildStoreMenusAfterAdminChange(body, product, previousConfigs, savedConfigs, configs);
+    invalidateProductMenuCache(body, previousConfigs, savedConfigs, configs);
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
@@ -1253,8 +1304,7 @@ export async function DELETE(req: Request) {
     }
 
     await ProductStoreConfig.collection.deleteMany(productIdMatch(id));
-    invalidateMenuProducts();
-    await rebuildStoreMenusAfterAdminChange(deletedProduct, previousConfigs);
+    invalidateProductMenuCache(previousConfigs);
 
     return NextResponse.json({
       success: true,

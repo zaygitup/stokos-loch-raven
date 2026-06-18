@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getStoreMenuPayload } from "@/lib/server/storemenu";
 
 export const runtime = "nodejs";
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type RouteProps = {
   params: Promise<{ slug: string }>;
@@ -15,6 +16,14 @@ function slugify(value: unknown) {
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function noStoreHeaders() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
 }
 
 export async function GET(_request: Request, { params }: RouteProps) {
@@ -40,26 +49,31 @@ export async function GET(_request: Request, { params }: RouteProps) {
             modifierGroups: 0,
             upsells: 0,
           },
+          updatedAt: new Date().toISOString(),
           message: "Store slug is required.",
         },
         {
           status: 400,
-          headers: { "Cache-Control": "no-store" },
+          headers: noStoreHeaders(),
         }
       );
     }
 
-    // ✅ No internal rebuild/snapshot and no broad modifier/upsell collection scan.
-    // Product list only needs categories + product cards. Product modal can load details later.
-    const payload = await getStoreMenuPayload(cleanSlug);
+    // Customer menu API is intentionally no-store because MenuSectionsClient
+    // polls this endpoint after admin product/category CRUD changes.
+    const payload = (await getStoreMenuPayload(cleanSlug)) as any;
 
-    return NextResponse.json(payload, {
-      status: 200,
-      headers: {
-        "Cache-Control":
-          "public, max-age=0, s-maxage=30, stale-while-revalidate=300",
+    return NextResponse.json(
+      {
+        ...payload,
+        success: payload?.success !== false,
+        updatedAt: payload?.updatedAt || new Date().toISOString(),
       },
-    });
+      {
+        status: 200,
+        headers: noStoreHeaders(),
+      }
+    );
   } catch (error) {
     console.error("Store single menu API error:", error);
 
@@ -80,11 +94,12 @@ export async function GET(_request: Request, { params }: RouteProps) {
           modifierGroups: 0,
           upsells: 0,
         },
+        updatedAt: new Date().toISOString(),
         message: "Failed to load store menu.",
       },
       {
         status: 500,
-        headers: { "Cache-Control": "no-store" },
+        headers: noStoreHeaders(),
       }
     );
   }
