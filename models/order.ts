@@ -41,6 +41,11 @@ const OrderSchema = new Schema(
       index: true,
     },
 
+    stripePaymentIntentId: {
+      type: String,
+      index: true,
+    },
+
     storeSlug: { type: String, required: true, index: true },
     storeName: { type: String, required: true },
 

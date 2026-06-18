@@ -29,6 +29,10 @@ export async function POST(req: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
 
     try {
       await connectMongoDB();
@@ -42,6 +46,9 @@ export async function POST(req: Request) {
             customerName: session.customer_details?.name || "Not provided",
             customerEmail: session.customer_details?.email || "Not provided",
             customerPhone: session.customer_details?.phone || undefined,
+            ...(paymentIntentId
+              ? { stripePaymentIntentId: paymentIntentId }
+              : {}),
           },
           $push: {
             statusHistory: { status: "Confirmed", at: new Date() },

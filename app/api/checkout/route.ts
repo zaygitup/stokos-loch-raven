@@ -8,6 +8,22 @@ function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!);
 }
 
+function buildConnectPaymentIntentData(amountTotal: number) {
+  const connectAccountId = process.env.STRIPE_CONNECT_ACCOUNT_ID?.trim();
+  if (!connectAccountId) return undefined;
+
+  const feePercent = Number(process.env.STRIPE_PLATFORM_FEE_PERCENT ?? 0);
+  const amountCents = Math.round(amountTotal * 100);
+  const feeAmount = Math.round(amountCents * (feePercent / 100));
+
+  return {
+    application_fee_amount: feeAmount,
+    transfer_data: {
+      destination: connectAccountId,
+    },
+  };
+}
+
 function generateOrderNumber(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -226,6 +242,8 @@ export async function POST(req: Request) {
       statusHistory: [{ status: "Placed", at: new Date() }],
     });
 
+    const connectPaymentIntentData = buildConnectPaymentIntentData(amountTotal);
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
 
@@ -236,6 +254,10 @@ export async function POST(req: Request) {
       payment_method_types: ["card"],
 
       line_items: allLineItems,
+
+      ...(connectPaymentIntentData
+        ? { payment_intent_data: connectPaymentIntentData }
+        : {}),
 
       metadata: {
         store: storeSlug,
