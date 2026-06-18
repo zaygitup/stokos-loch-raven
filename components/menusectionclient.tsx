@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+const MENU_POLL_INTERVAL_MS = 2000;
+
 const MenuSection = dynamic(() => import("@/components/menusection"), {
   ssr: false,
   loading: () => (
@@ -43,16 +45,11 @@ interface MenuSectionsClientProps {
   initialMenuData?: StoreMenuApiData;
 }
 
-const MENU_POLL_INTERVAL_MS = 2_000;
-
-function pickFirstArray<T>(...arrays: (T[] | undefined)[]) {
-  const found = arrays.find((item) => Array.isArray(item));
-  return found || [];
-}
-
-function pickNonEmptyArray<T>(...arrays: (T[] | undefined)[]) {
-  const found = arrays.find((item) => Array.isArray(item) && item.length > 0);
-  return found || [];
+function pickNonEmptyArray<T>(first?: T[], second?: T[], third?: T[]) {
+  if (Array.isArray(first) && first.length > 0) return first;
+  if (Array.isArray(second) && second.length > 0) return second;
+  if (Array.isArray(third) && third.length > 0) return third;
+  return [];
 }
 
 function cleanString(value: unknown) {
@@ -174,28 +171,6 @@ function getSlugFromParams(params: ReturnType<typeof useParams>) {
   return typeof rawSlug === "string" ? rawSlug : "";
 }
 
-function getInitialProducts(
-  initialMenuData: StoreMenuApiData | undefined,
-  initialProducts: any[]
-) {
-  return pickNonEmptyArray(
-    initialMenuData?.products,
-    initialMenuData?.menuProducts,
-    initialProducts
-  );
-}
-
-function getInitialCategories(
-  initialMenuData: StoreMenuApiData | undefined,
-  categories: MenuCategoryTab[]
-) {
-  return pickNonEmptyArray(
-    initialMenuData?.categories,
-    initialMenuData?.menuCategories,
-    categories
-  );
-}
-
 export default function MenuSectionsClient({
   storeSlug,
   categories = [],
@@ -209,63 +184,76 @@ export default function MenuSectionsClient({
   const [clientMenuData, setClientMenuData] = useState<StoreMenuApiData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const hasInitialData = useMemo(() => {
-    return (
-      getInitialProducts(initialMenuData, initialProducts).length > 0 ||
-      getInitialCategories(initialMenuData, categories).length > 0
+  const initialOnlyProducts = useMemo(() => {
+    return pickNonEmptyArray(
+      initialMenuData?.products,
+      initialMenuData?.menuProducts,
+      initialProducts
     );
-  }, [initialMenuData, initialProducts, categories]);
+  }, [initialMenuData, initialProducts]);
+
+  const initialOnlyCategories = useMemo(() => {
+    return pickNonEmptyArray(
+      initialMenuData?.categories,
+      initialMenuData?.menuCategories,
+      categories
+    );
+  }, [initialMenuData, categories]);
+
+  const hasInitialData = initialOnlyProducts.length > 0 && initialOnlyCategories.length > 0;
 
   const products = useMemo(() => {
-    if (clientMenuData) {
-      // IMPORTANT: use client API arrays even if empty.
-      // This makes delete/update reflect without falling back to old SSR props.
-      return pickFirstArray(clientMenuData.products, clientMenuData.menuProducts);
-    }
-
-    return getInitialProducts(initialMenuData, initialProducts);
-  }, [clientMenuData, initialMenuData, initialProducts]);
+    return pickNonEmptyArray(
+      clientMenuData?.products,
+      clientMenuData?.menuProducts,
+      initialOnlyProducts
+    );
+  }, [clientMenuData, initialOnlyProducts]);
 
   const visibleCategories = useMemo(() => {
-    if (clientMenuData) {
-      // IMPORTANT: use client API arrays even if empty.
-      return pickFirstArray(clientMenuData.categories, clientMenuData.menuCategories);
-    }
-
-    return getInitialCategories(initialMenuData, categories);
-  }, [clientMenuData, initialMenuData, categories]);
+    return pickNonEmptyArray(
+      clientMenuData?.categories,
+      clientMenuData?.menuCategories,
+      initialOnlyCategories
+    );
+  }, [clientMenuData, initialOnlyCategories]);
 
   useEffect(() => {
     if (!resolvedStoreSlug) return;
 
     let isMounted = true;
+    let isFetching = false;
     let controller: AbortController | null = null;
 
-    async function loadMenu(silent = true) {
-      if (controller) {
-        controller.abort();
-      }
+    console.log("MENU POLLING STARTED:", resolvedStoreSlug);
 
+    async function loadMenu(silent = true) {
+      if (isFetching) return;
+
+      isFetching = true;
       controller = new AbortController();
 
       if (!silent) {
         setIsLoading(true);
       }
 
+      const menuUrl = `/api/store/${encodeURIComponent(
+        resolvedStoreSlug
+      )}/menu?_ts=${Date.now()}`;
+
+      console.log("FETCHING MENU API:", menuUrl);
+
       try {
-        const response = await fetch(
-          `/api/store/${encodeURIComponent(resolvedStoreSlug)}/menu?_ts=${Date.now()}`,
-          {
-            method: "GET",
-            cache: "no-store",
-            headers: {
-              Accept: "application/json",
-              "Cache-Control": "no-cache",
-              Pragma: "no-cache",
-            },
-            signal: controller.signal,
-          }
-        );
+        const response = await fetch(menuUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           throw new Error(`Menu API failed with status ${response.status}`);
@@ -274,6 +262,12 @@ export default function MenuSectionsClient({
         const data = (await response.json()) as StoreMenuApiData;
 
         if (isMounted) {
+          console.log("MENU API UPDATED:", {
+            products: data.products?.length ?? data.menuProducts?.length ?? 0,
+            categories: data.categories?.length ?? data.menuCategories?.length ?? 0,
+            updatedAt: data.updatedAt,
+          });
+
           setClientMenuData(data);
         }
       } catch (error: any) {
@@ -281,14 +275,14 @@ export default function MenuSectionsClient({
           console.error("Client menu API refresh error:", error);
         }
       } finally {
+        isFetching = false;
+
         if (isMounted) {
           setIsLoading(false);
         }
       }
     }
 
-    // Initial client refresh runs even when SSR already has data,
-    // so admin changes appear without a manual page refresh.
     loadMenu(hasInitialData);
 
     const intervalId = window.setInterval(() => {
@@ -309,7 +303,10 @@ export default function MenuSectionsClient({
       isMounted = false;
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (controller) controller.abort();
+
+      if (controller) {
+        controller.abort();
+      }
     };
   }, [resolvedStoreSlug, hasInitialData]);
 
