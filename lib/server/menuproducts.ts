@@ -38,10 +38,8 @@ export type FrontendMenuProduct = {
 export type FrontendMenuProductDetails = FrontendMenuProduct;
 
 const FALLBACK_IMAGE = "/images/placeholder-food.png";
-
-// ✅ Auto-update fast rakhne ke liye list cache very short.
-const MENU_CACHE_TTL_MS = 1000;
-const DETAIL_CACHE_TTL_MS = 20_000;
+const MENU_CACHE_TTL_MS = 1_000;
+const DETAIL_CACHE_TTL_MS = 5_000;
 
 const MODIFIER_GROUP_COLLECTIONS = [
   "modifiergroups",
@@ -419,16 +417,12 @@ function makeBaseProduct(
 function buildListProduct(
   storeSlug: string,
   product: any,
-  config: any,
-  categoryDoc?: any
+  config: any
 ): FrontendMenuProduct {
-  const baseProduct = makeBaseProduct(storeSlug, product, config, categoryDoc);
+  const baseProduct = makeBaseProduct(storeSlug, product, config);
 
   return {
     ...baseProduct,
-
-    // ✅ Menu list fast: no heavy modal data here.
-    // Product modal/details API can load sizes/modifiers when needed.
     hasDetails: false,
     sizes: [],
     modifierGroups: [],
@@ -519,7 +513,6 @@ async function findModifierGroupDocs(keys: string[]) {
         sortOrder: 1,
         name: 1,
       })
-      .maxTimeMS(5000)
       .toArray();
 
     docs.forEach((doc) => {
@@ -669,6 +662,11 @@ async function getActiveStoreProductListConfigs(storeKeys: string[]) {
       categorySlug: 1,
       price: 1,
       image: 1,
+      sizes: 1,
+      modifierGroups: 1,
+      attachedModifierGroups: 1,
+      relatedUpsells: 1,
+      upsell: 1,
       isPopular: 1,
       showInPopular: 1,
       sortOrder: 1,
@@ -716,6 +714,11 @@ async function findListProductsByConfigIds(productIds: string[]) {
       categoryName: 1,
       categoryTitle: 1,
       categorySlug: 1,
+      sizes: 1,
+      modifierGroups: 1,
+      attachedModifierGroups: 1,
+      relatedUpsells: 1,
+      upsell: 1,
       isPopular: 1,
       showInPopular: 1,
       popular: 1,
@@ -727,8 +730,9 @@ async function findListProductsByConfigIds(productIds: string[]) {
     .maxTimeMS(5000);
 }
 
-// ✅ LIST endpoint/page helper: fast payload only.
-// Sizes/modifierGroups/upsells are intentionally not hydrated here.
+// LIST endpoint/page helper: full menu product payload.
+// Sizes and modifier groups are hydrated here so ProductModal does not need
+// a second API request when it opens.
 async function getStoreMenuProductsFromDB(
   storeSlug: string
 ): Promise<FrontendMenuProduct[]> {
@@ -779,14 +783,31 @@ async function getStoreMenuProductsFromDB(
   const categoryMap = new Map<string, any>();
   categoryDocs.forEach((doc) => addCategoryToMap(categoryMap, doc));
 
-  const result = rows.map((row) => {
-    const categoryDoc = getCategoryDocForProduct(
-      categoryMap,
-      row.config,
-      row.product
+  const rowsWithCategory = rows.map((row) => ({
+    ...row,
+    categoryDoc: getCategoryDocForProduct(categoryMap, row.config, row.product),
+  }));
+
+  const rawGroupsCollection = rowsWithCategory.map((row) =>
+    pickArray(row.config, row.product, "modifierGroups", "attachedModifierGroups")
+  );
+
+  const modifierGroupDocMap = await buildModifierGroupDocMap(rawGroupsCollection);
+
+  const result = rowsWithCategory.map((row, index) => {
+    const rawGroups = rawGroupsCollection[index] || [];
+    const hydratedModifierGroups = hydrateModifierGroupsWithMap(
+      rawGroups,
+      modifierGroupDocMap
     );
 
-    return buildListProduct(cleanSlug, row.product, row.config, categoryDoc);
+    return buildFullProduct(
+      cleanSlug,
+      row.product,
+      row.config,
+      hydratedModifierGroups,
+      row.categoryDoc
+    );
   });
 
   return result.sort((a, b) => {
@@ -799,17 +820,25 @@ async function getStoreMenuProductsFromDB(
 }
 
 export async function getStoreMenuProducts(
-  storeSlug: string
+  storeSlug: string,
+  options: { bypassCache?: boolean } = {}
 ): Promise<FrontendMenuProduct[]> {
   const cleanSlug = normalizeStoreId(storeSlug);
 
   if (!cleanSlug) return [];
 
   const cacheKey = `menu-products:${cleanSlug}`;
-  const cached = memGet<FrontendMenuProduct[]>(cacheKey);
 
-  if (cached) return cached;
+  if (!options.bypassCache) {
+    const cached = memGet<FrontendMenuProduct[]>(cacheKey);
 
+    if (cached) return cached;
+  }
+
+  // Do not use unstable_cache here.
+  // Next.js data cache fails when payload is over 2MB.
+  // Short in-memory TTL keeps polling fast but still allows admin changes
+  // to appear without a manual customer-side page refresh.
   const data = await getStoreMenuProductsFromDB(cleanSlug);
 
   memSet(cacheKey, data, MENU_CACHE_TTL_MS);
