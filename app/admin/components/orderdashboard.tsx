@@ -156,6 +156,15 @@ export default function OrdersDashboard() {
   const handleAdvanceStatus = async (newStatus: OrderStatus) => {
     if (!activeOrder || advancing) return;
 
+    if (newStatus === "Cancelled") {
+      const isPaid = activeOrder.paymentStatus === "paid";
+      const amount = formatMoney(activeOrder.currency, activeOrder.amountTotal);
+      const warning = isPaid
+        ? `⚠️ This order has already been PAID (${amount}).\n\nYou must issue a refund manually in your Stripe Dashboard before cancelling.\n\nCancel this order anyway?`
+        : "Cancel this order? This cannot be undone.";
+      if (!window.confirm(warning)) return;
+    }
+
     setAdvancing(true);
 
     try {
@@ -349,6 +358,8 @@ export default function OrdersDashboard() {
                     className={`w-full rounded-3xl border p-4 text-left transition ${
                       isActive
                         ? "border-green-700 bg-green-50 shadow-sm"
+                        : order.paymentStatus !== "paid"
+                        ? "border-zinc-200 bg-zinc-50/60 opacity-60 hover:opacity-100 hover:border-zinc-300"
                         : "border-zinc-200 bg-white hover:border-green-400 hover:bg-green-50/40"
                     }`}
                   >
@@ -370,6 +381,11 @@ export default function OrdersDashboard() {
                         >
                           {order.status}
                         </span>
+                        {order.paymentStatus !== "paid" && (
+                          <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[9px] font-black uppercase text-yellow-700">
+                            Awaiting Payment
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -448,12 +464,20 @@ export default function OrdersDashboard() {
                   </div>
 
                   <div className="flex flex-wrap gap-3">
-                    <div className="rounded-2xl bg-green-50 px-5 py-3 text-green-800">
+                    <div className={`rounded-2xl px-5 py-3 ${
+                      activeOrder.paymentStatus === "paid"
+                        ? "bg-green-50 text-green-800"
+                        : activeOrder.paymentStatus === "failed"
+                        ? "bg-red-50 text-red-800"
+                        : "bg-yellow-50 text-yellow-800"
+                    }`}>
                       <p className="text-xs font-black uppercase">Payment</p>
                       <p className="text-sm font-black">
                         {activeOrder.paymentStatus === "paid"
-                          ? "Paid Successfully"
-                          : activeOrder.paymentStatus || "Pending"}
+                          ? "✓ Paid"
+                          : activeOrder.paymentStatus === "failed"
+                          ? "✕ Failed"
+                          : "⏳ Awaiting Payment"}
                       </p>
                     </div>
 
@@ -488,11 +512,11 @@ export default function OrdersDashboard() {
                         onClick={() => handleAdvanceStatus(s)}
                         className={`rounded-full px-4 py-2 text-xs font-black uppercase transition disabled:opacity-60 ${
                           s === "Cancelled"
-                            ? "bg-red-50 text-red-700 hover:bg-red-100"
+                            ? "bg-red-100 text-red-700 hover:bg-red-200"
                             : "bg-[#0F3F24] text-white hover:bg-[#146C38]"
                         }`}
                       >
-                        {advancing ? "..." : `→ ${s}`}
+                        {advancing ? "..." : s === "Cancelled" ? "✕ Cancel Order" : `→ ${s}`}
                       </button>
                     ))}
                   </div>
