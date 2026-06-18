@@ -89,14 +89,26 @@ function uniqueStrings(values: unknown[]) {
 
 function formatRelatedUpsells(value: unknown) {
   const rawItems = Array.isArray(value) ? value : [];
-  const unique = new Map<string, { upsellId: string; name: string; price: number }>();
+
+  const unique = new Map<
+    string,
+    {
+      upsellId: string;
+      name: string;
+      price: number;
+    }
+  >();
 
   rawItems.forEach((item: any, index) => {
     if (typeof item === "string" || typeof item === "number") {
       const upsellId = cleanString(item);
       if (!upsellId) return;
 
-      unique.set(upsellId, { upsellId, name: upsellId, price: 0 });
+      unique.set(upsellId, {
+        upsellId,
+        name: upsellId,
+        price: 0,
+      });
       return;
     }
 
@@ -122,10 +134,6 @@ function formatRelatedUpsells(value: unknown) {
   });
 
   return Array.from(unique.values());
-}
-
-function getConfigStoreId(config: any) {
-  return normalizeStoreId(config?.storeId || config?.storeSlug || config?.store);
 }
 
 function formatProductConfig(config: any) {
@@ -266,6 +274,7 @@ function buildCategoryRows(categoriesRaw: any[], configsRaw: any[]) {
 
   configsRaw.map(toPlain).forEach((config: any) => {
     const categoryId = cleanString(config.categoryId);
+
     const category = categoriesById.get(categoryId) || {
       _id: categoryId,
       name: cleanString(config.categoryName),
@@ -276,14 +285,20 @@ function buildCategoryRows(categoriesRaw: any[], configsRaw: any[]) {
       sortOrder: cleanNumber(config.sortOrder, 0),
     };
 
-    const slugKey = slugify(category.slug || config.categorySlug || category.name || config.categoryName);
+    const slugKey = slugify(
+      category.slug || config.categorySlug || category.name || config.categoryName
+    );
+
     const nameKey = slugify(category.name || config.categoryName);
     const groupKey = slugKey || nameKey || categoryId;
 
     if (!groupKey) return;
 
     if (!groupedBySlug.has(groupKey)) {
-      groupedBySlug.set(groupKey, { category, configs: [] });
+      groupedBySlug.set(groupKey, {
+        category,
+        configs: [],
+      });
     }
 
     const group = groupedBySlug.get(groupKey);
@@ -304,6 +319,7 @@ function buildCategoryRows(categoriesRaw: any[], configsRaw: any[]) {
     .sort((a, b) => {
       const sortDiff = cleanNumber(a.sortOrder, 0) - cleanNumber(b.sortOrder, 0);
       if (sortDiff !== 0) return sortDiff;
+
       return cleanString(a.name).localeCompare(cleanString(b.name));
     });
 }
@@ -358,17 +374,23 @@ export async function getAdminMenuPayload(): Promise<AdminMenuPayload> {
     upsellRulesRaw,
   ] = await Promise.all([
     Product.find({}).sort({ name: 1, createdAt: -1 }).lean(),
+
     ProductStoreConfig.collection
       .find({})
       .sort({ storeId: 1, sortOrder: 1, createdAt: -1 })
       .toArray(),
+
     Category.find({}).sort({ sortOrder: 1, name: 1 }).lean(),
+
     CategoryStoreConfig.collection
       .find({})
       .sort({ sortOrder: 1, createdAt: 1 })
       .toArray(),
+
     ModifierGroup.find({}).sort({ sortOrder: 1, name: 1 }).lean(),
+
     ModifierGroupAssignment.find({}).sort({ sortOrder: 1, createdAt: 1 }).lean(),
+
     UpsellRule.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
   ]);
 
@@ -385,7 +407,10 @@ export async function getAdminMenuPayload(): Promise<AdminMenuPayload> {
   });
 
   const products = productsRaw.map((product: any) =>
-    formatProductWithConfigs(product, configsByProduct.get(cleanString(product._id)) || [])
+    formatProductWithConfigs(
+      product,
+      configsByProduct.get(cleanString(product._id)) || []
+    )
   );
 
   return {

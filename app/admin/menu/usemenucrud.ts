@@ -251,7 +251,10 @@ async function apiGet<T>(type: MenuEntity): Promise<T[]> {
   }
 }
 
-function getBootstrapArray<T>(json: any, key: keyof MenuBootstrapPayload): T[] {
+function getBootstrapArray<T>(
+  json: any,
+  key: keyof MenuBootstrapPayload
+): T[] {
   const sources = [json?.data, json?.payload, json?.result, json];
 
   for (const source of sources) {
@@ -286,14 +289,18 @@ async function apiGetBootstrap(): Promise<MenuBootstrapPayload> {
       upsellRules: getBootstrapArray<UpsellRule>(json, "upsellRules"),
     };
   } catch (error) {
-    console.error("Admin menu bootstrap failed, falling back to split endpoints:", error);
+    console.error(
+      "Admin menu bootstrap failed, falling back to split endpoints:",
+      error
+    );
 
-    const [products, categories, modifierGroups, upsellRules] = await Promise.all([
-      apiGet<Product>("products"),
-      apiGet<Category>("categories"),
-      apiGet<ModifierGroup>("modifier-groups"),
-      apiGet<UpsellRule>("upsells"),
-    ]);
+    const [products, categories, modifierGroups, upsellRules] =
+      await Promise.all([
+        apiGet<Product>("products"),
+        apiGet<Category>("categories"),
+        apiGet<ModifierGroup>("modifier-groups"),
+        apiGet<UpsellRule>("upsells"),
+      ]);
 
     return {
       products,
@@ -1481,7 +1488,9 @@ export function useMenuCrud(initialData?: MenuCrudInitialData) {
 
   const [categories, setCategories] = useState<Category[]>(() =>
     sortBySortOrder(
-      safeArray<Category>(initialData?.categories).map(normalizeCategory) as Category[]
+      safeArray<Category>(initialData?.categories).map(
+        normalizeCategory
+      ) as Category[]
     )
   );
 
@@ -1498,25 +1507,32 @@ export function useMenuCrud(initialData?: MenuCrudInitialData) {
   const firstLoadDone = useRef(hasInitialData);
   const backgroundRefreshStarted = useRef(false);
 
-  const loadMenu = useCallback(async (options: { silent?: boolean } = {}) => {
-    const shouldShowLoader = !firstLoadDone.current && !options.silent;
+  const loadMenu = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      const shouldShowLoader = !firstLoadDone.current && !options.silent;
 
-    if (shouldShowLoader) {
-      setIsLoaded(false);
-    }
+      if (shouldShowLoader) {
+        setIsLoaded(false);
+      }
 
-    const menuData = await apiGetBootstrap();
+      const menuData = await apiGetBootstrap();
 
-    setProducts(menuData.products.map(normalizeProduct));
-    setCategories(
-      sortBySortOrder(menuData.categories.map(normalizeCategory) as Category[])
-    );
-    setModifierGroups(menuData.modifierGroups.map(normalizeModifier));
-    setUpsellRules(menuData.upsellRules.map(normalizeUpsell));
+      setProducts(menuData.products.map(normalizeProduct));
 
-    firstLoadDone.current = true;
-    setIsLoaded(true);
-  }, []);
+      setCategories(
+        sortBySortOrder(
+          menuData.categories.map(normalizeCategory) as Category[]
+        )
+      );
+
+      setModifierGroups(menuData.modifierGroups.map(normalizeModifier));
+      setUpsellRules(menuData.upsellRules.map(normalizeUpsell));
+
+      firstLoadDone.current = true;
+      setIsLoaded(true);
+    },
+    []
+  );
 
   useEffect(() => {
     if (firstLoadDone.current && !backgroundRefreshStarted.current) {
