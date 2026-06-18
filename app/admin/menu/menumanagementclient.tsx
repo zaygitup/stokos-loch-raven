@@ -708,16 +708,17 @@ export default function MenuManagementClient() {
           isInitialMenuLoading ? (
             <AdminMenuLoadingState title="Loading categories..." />
           ) : (
-            <CategoryTable
-              categories={visibleCategories}
-              products={visibleProducts}
-              stores={stores}
-              hideEdit={selectedStoreFilter === "all"}
-              onEdit={(category) =>
-                setModal({ type: "categories", item: category })
-              }
-              onDelete={(id) => handleDelete("categories", id)}
-            />
+           <CategoryTable
+  categories={visibleCategories}
+  products={visibleProducts}
+  stores={stores}
+  hideEdit={selectedStoreFilter === "all"}
+  selectedStoreId={selectedStoreFilter}
+  onEdit={(category) =>
+    setModal({ type: "categories", item: category })
+  }
+  onDelete={(id) => handleDelete("categories", id)}
+/>
           )
         )}
 
