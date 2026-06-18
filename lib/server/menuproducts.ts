@@ -662,6 +662,11 @@ async function getActiveStoreProductListConfigs(storeKeys: string[]) {
       categorySlug: 1,
       price: 1,
       image: 1,
+      sizes: 1,
+      modifierGroups: 1,
+      attachedModifierGroups: 1,
+      relatedUpsells: 1,
+      upsell: 1,
       isPopular: 1,
       showInPopular: 1,
       sortOrder: 1,
@@ -709,6 +714,11 @@ async function findListProductsByConfigIds(productIds: string[]) {
       categoryName: 1,
       categoryTitle: 1,
       categorySlug: 1,
+      sizes: 1,
+      modifierGroups: 1,
+      attachedModifierGroups: 1,
+      relatedUpsells: 1,
+      upsell: 1,
       isPopular: 1,
       showInPopular: 1,
       popular: 1,
@@ -720,9 +730,9 @@ async function findListProductsByConfigIds(productIds: string[]) {
     .maxTimeMS(5000);
 }
 
-// LIST endpoint/page helper: fast product cards only.
-// Do NOT fetch sizes/modifierGroups/attachedModifierGroups here.
-// Product details are loaded only when ProductModal opens.
+// LIST endpoint/page helper: full menu product payload.
+// Sizes and modifier groups are hydrated here so ProductModal does not need
+// a second API request when it opens.
 async function getStoreMenuProductsFromDB(
   storeSlug: string
 ): Promise<FrontendMenuProduct[]> {
@@ -754,15 +764,51 @@ async function getStoreMenuProductsFromDB(
   const products = await findListProductsByConfigIds(productIds);
   const productMap = buildProductMap(products);
 
-  const result = configs
+  const rows = configs
     .map((config) => {
       const product = productMap.get(getConfigProductKey(config));
 
       if (!product) return null;
 
-      return buildListProduct(cleanSlug, product, config);
+      return { config, product };
     })
-    .filter(Boolean) as FrontendMenuProduct[];
+    .filter(Boolean) as { config: any; product: any }[];
+
+  if (!rows.length) return [];
+
+  const categoryDocs = await findCategoryDocs(
+    rows.flatMap((row) => getCategoryKeys(row.config, row.product))
+  );
+
+  const categoryMap = new Map<string, any>();
+  categoryDocs.forEach((doc) => addCategoryToMap(categoryMap, doc));
+
+  const rowsWithCategory = rows.map((row) => ({
+    ...row,
+    categoryDoc: getCategoryDocForProduct(categoryMap, row.config, row.product),
+  }));
+
+  const rawGroupsCollection = rowsWithCategory.map((row) =>
+    pickArray(row.config, row.product, "modifierGroups", "attachedModifierGroups")
+  );
+
+  const modifierGroupDocMap = await buildModifierGroupDocMap(rawGroupsCollection);
+
+  const result = rowsWithCategory.map((row, index) => {
+    const rawGroups = rawGroupsCollection[index] || [];
+    const hydratedModifierGroups = hydrateModifierGroupsWithMap(
+      rawGroups,
+      modifierGroupDocMap
+    );
+
+    return buildFullProduct(
+      cleanSlug,
+      row.product,
+      row.config,
+      hydratedModifierGroups,
+      row.categoryDoc
+    );
+  });
 
   return result.sort((a, b) => {
     const categorySort = a.categorySlug.localeCompare(b.categorySlug);

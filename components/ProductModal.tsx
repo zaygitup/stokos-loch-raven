@@ -79,43 +79,6 @@ type SelectedModifierDetail = {
 };
 
 const FALLBACK_IMAGE = "/images/placeholder-food.png";
-const PRODUCT_DETAIL_CACHE_TTL_MS = 60_000;
-
-const productDetailCache = new Map<
-  string,
-  { product: ProductLike; expiresAt: number }
->();
-
-function getProductDetailCacheKey(storeSlug: string, detailId: string) {
-  return `${storeSlug}::${detailId}`.toLowerCase();
-}
-
-function readCachedProductDetails(storeSlug: string, detailId: string) {
-  const key = getProductDetailCacheKey(storeSlug, detailId);
-  const cached = productDetailCache.get(key);
-
-  if (!cached) return null;
-
-  if (Date.now() > cached.expiresAt) {
-    productDetailCache.delete(key);
-    return null;
-  }
-
-  return cached.product;
-}
-
-function writeCachedProductDetails(
-  storeSlug: string,
-  detailId: string,
-  product: ProductLike
-) {
-  const key = getProductDetailCacheKey(storeSlug, detailId);
-  productDetailCache.set(key, {
-    product,
-    expiresAt: Date.now() + PRODUCT_DETAIL_CACHE_TTL_MS,
-  });
-}
-
 
 function isRecord(value: unknown): value is AnyRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -165,17 +128,6 @@ function getProductId(product: ProductLike) {
   );
 }
 
-function getProductDetailId(product: ProductLike | null) {
-  if (!product) return "";
-  return readString(
-    product.productId || product.id || product._id || product.slug ||
-    slugify(product.title || product.name || "")
-  );
-}
-
-function getProductStoreSlug(product: ProductLike | null) {
-  return readString(product?.storeSlug);
-}
 
 function getSizeLabel(size: ProductSize) {
   return readString(size.label || size.name || size.id, "Regular");
@@ -329,24 +281,6 @@ function normalizeModifierGroups(product: ProductLike | null): ModifierGroup[] {
     .sort((a: ModifierGroup, b: ModifierGroup) => a.sortOrder - b.sortOrder);
 }
 
-function productHasPreloadedDetails(product: ProductLike | null) {
-  if (!product) return false;
-  if (product.hasDetails === true) return true;
-
-  const rawGroups =
-    readArray(product.modifierGroups).length > 0
-      ? readArray(product.modifierGroups)
-      : readArray(product.attachedModifierGroups);
-
-  const hasSizes = readArray(product.sizes).length > 0;
-  const hasModifierOptions = rawGroups.some((group) => {
-    if (!isRecord(group)) return false;
-    return readArray(group.options).length > 0 || readArray(group.modifierOptions).length > 0;
-  });
-
-  return hasSizes || hasModifierOptions;
-}
-
 function StatusBadge({ label, tone }: { label: string; tone: "success" | "danger" | "neutral" }) {
   const toneClass =
     tone === "success"
@@ -377,13 +311,10 @@ export default function ProductModal({ product, isOpen, onClose }: ProductModalP
   useEffect(() => {
     if (!isOpen || !product) return;
 
-    const baseProduct = product;
-    // ✅ Safe: always read storeSlug from product, fallback to empty string
-    const storeSlug = getProductStoreSlug(baseProduct);
-    const detailId = getProductDetailId(baseProduct);
-    const controller = new AbortController();
-
-    setProductDetails(baseProduct);
+    // Sizes, modifier groups and options are now preloaded in the initial
+    // cached menu payload, so do not fetch product details again on modal open.
+    setProductDetails(product);
+    setDetailsLoading(false);
     setDetailsError("");
     setQuantity(1);
     setNote("");
@@ -391,73 +322,6 @@ export default function ProductModal({ product, isOpen, onClose }: ProductModalP
     setSelectedModifiers({});
     setSelectedModifierSides({});
     setSelectedSize(null);
-
-    if (!storeSlug || !detailId) {
-      setDetailsLoading(false);
-      return;
-    }
-
-    // ✅ Main speed fix:
-    // If products were server-preloaded with sizes/modifierGroups,
-    // do not call the detail API again on modal open.
-    if (productHasPreloadedDetails(baseProduct)) {
-      setDetailsLoading(false);
-      return;
-    }
-
-    const cachedDetails = readCachedProductDetails(storeSlug, detailId);
-    if (cachedDetails) {
-      setProductDetails({
-        ...baseProduct,
-        ...cachedDetails,
-        storeSlug: cachedDetails.storeSlug || baseProduct.storeSlug || storeSlug,
-      });
-      setDetailsLoading(false);
-      return;
-    }
-
-    async function loadProductDetails() {
-      setDetailsLoading(true);
-      try {
-        const response = await fetch(
-          `/api/store/${encodeURIComponent(storeSlug)}/menu-products/${encodeURIComponent(detailId)}`,
-          {
-            // ✅ No ?ts= — server already sends no-store header for detail
-            cache: "no-store",
-            signal: controller.signal,
-          }
-        );
-
-        if (!response.ok) throw new Error("Product details request failed");
-
-        const data = await response.json();
-
-        if (data?.success && data?.product) {
-          const mergedProduct = {
-            ...baseProduct,
-            ...data.product,
-            // Safe storeSlug merge — no "possibly null" TS error
-            storeSlug: data.product?.storeSlug || baseProduct?.storeSlug || storeSlug,
-          };
-
-          writeCachedProductDetails(storeSlug, detailId, mergedProduct);
-          setProductDetails(mergedProduct);
-          setDetailsError("");
-        } else {
-          throw new Error(data?.message || "Product details missing");
-        }
-      } catch (error: any) {
-        if (error?.name === "AbortError") return;
-        console.warn("Product details load failed:", error);
-        setProductDetails(baseProduct);
-        setDetailsError("Options are taking longer than expected. Please try again.");
-      } finally {
-        if (!controller.signal.aborted) setDetailsLoading(false);
-      }
-    }
-
-    loadProductDetails();
-    return () => controller.abort();
   }, [isOpen, product]);
 
   const activeProduct = productDetails ?? product;
