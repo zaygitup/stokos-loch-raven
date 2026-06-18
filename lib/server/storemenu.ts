@@ -1,6 +1,5 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
 import { getStoreMenuCategories } from "@/lib/server/menucategories";
 import { getStoreMenuProducts } from "@/lib/server/menuproducts";
 
@@ -41,6 +40,10 @@ export type StoreMenuApiData = {
     upsells: number;
   };
   updatedAt: string;
+};
+
+type StoreMenuPayloadOptions = {
+  bypassProductCache?: boolean;
 };
 
 const POPULAR_CATEGORY: MenuCategoryTab = {
@@ -145,8 +148,20 @@ function buildCategories(dbCategories: DbCategory[]) {
   return [POPULAR_CATEGORY, ...realCategories];
 }
 
+async function getFreshStoreProducts(storeSlug: string, bypassCache: boolean) {
+  // Cast keeps this file compatible even if your older menuproducts.ts only typed 1 argument.
+  // The v2 menuproducts.ts supports { bypassCache: true } and will bypass memory cache.
+  const getProducts = getStoreMenuProducts as unknown as (
+    slug: string,
+    options?: { bypassCache?: boolean }
+  ) => Promise<any[]>;
+
+  return getProducts(storeSlug, { bypassCache });
+}
+
 export async function getStoreMenuPayload(
-  storeSlug: string
+  storeSlug: string,
+  options: StoreMenuPayloadOptions = {}
 ): Promise<StoreMenuApiData> {
   const cleanSlug = slugify(storeSlug);
 
@@ -171,11 +186,12 @@ export async function getStoreMenuPayload(
     };
   }
 
-  // ✅ Only two queries for first menu paint.
-  // Modifiers and upsells should load later in product modal/detail flow.
+  const bypassProductCache = options.bypassProductCache !== false;
+
+  // Fresh customer API payload. Do not wrap this in unstable_cache.
   const [rawCategories, rawProducts] = await Promise.all([
     getStoreMenuCategories(cleanSlug),
-    getStoreMenuProducts(cleanSlug),
+    getFreshStoreProducts(cleanSlug, bypassProductCache),
   ]);
 
   const categories = buildCategories(
@@ -204,23 +220,10 @@ export async function getStoreMenuPayload(
   };
 }
 
-// ✅ Cached wrapper for public store menu page/API.
-// This stops repeated MongoDB hits for the same store within 30 seconds.
+// Keep this export name so page.tsx does not break, but DO NOT use unstable_cache here.
+// Old 30s unstable_cache was the main reason customer menu stayed stale.
 export async function getCachedStoreMenuPayload(
   storeSlug: string
 ): Promise<StoreMenuApiData> {
-  const cleanSlug = slugify(storeSlug);
-
-  if (!cleanSlug) {
-    return getStoreMenuPayload("");
-  }
-
-  return unstable_cache(
-    async () => getStoreMenuPayload(cleanSlug),
-    ["store-menu-payload", cleanSlug],
-    {
-      revalidate: 30,
-      tags: [`store-menu:${cleanSlug}`],
-    }
-  )();
+  return getStoreMenuPayload(storeSlug, { bypassProductCache: true });
 }

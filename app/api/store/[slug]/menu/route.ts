@@ -59,9 +59,10 @@ export async function GET(_request: Request, { params }: RouteProps) {
       );
     }
 
-    // Customer menu API is intentionally no-store because MenuSectionsClient
-    // polls this endpoint after admin product/category CRUD changes.
-    const payload = (await getStoreMenuPayload(cleanSlug)) as any;
+    // Fresh payload for client polling after admin CRUD.
+    const payload = await getStoreMenuPayload(cleanSlug, {
+      bypassProductCache: true,
+    });
 
     return NextResponse.json(
       {
