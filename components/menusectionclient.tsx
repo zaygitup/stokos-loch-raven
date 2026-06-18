@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-const MENU_POLL_INTERVAL_MS = 2000;
+const MENU_POLL_INTERVAL_MS = 1000;
 
 const MenuSection = dynamic(() => import("@/components/menusection"), {
   ssr: false,
