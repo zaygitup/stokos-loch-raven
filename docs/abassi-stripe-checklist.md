@@ -32,6 +32,14 @@ stripe account_links create \
   --type account_onboarding
 ```
 
+## Test webhook (Phase 2 — before Stokos bank link)
+
+**Endpoint:** `https://stokos-loch-raven-git-main-bayentlabs.vercel.app/api/webhooks/stripe`  
+**Event:** `checkout.session.completed`  
+**Note:** Vercel Deployment Protection must be **OFF** or webhooks will receive 401.
+
+For TEST QA, leave `STRIPE_CONNECT_ACCOUNT_ID` unset in Vercel — checkout uses direct platform mode.
+
 ---
 
 ## 3. Test mode validation
