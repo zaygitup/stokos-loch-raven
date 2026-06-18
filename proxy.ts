@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher, clerkClient as getClerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 const isAdminRoute = createRouteMatcher(["/admin(.*)", "/api/admin(.*)"]);
@@ -13,7 +13,6 @@ const isPublicRoute = createRouteMatcher([
   "/api/orders/track(.*)",
   "/api/webhooks(.*)",
   "/admin/sign-in(.*)",
-  "/admin/sign-up(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -36,10 +35,19 @@ export default clerkMiddleware(async (auth, req) => {
 
     if (allowedEmails.length > 0) {
       const { sessionClaims } = await auth();
-      const email = (
-        (sessionClaims?.email as string) ||
-        ""
-      ).toLowerCase();
+      let email = ((sessionClaims?.email as string) || "").toLowerCase();
+
+      // Fallback: session token may not include email if Clerk Dashboard
+      // session customization is not configured — fetch from Clerk API instead.
+      if (!email && userId) {
+        try {
+          const client = await getClerkClient();
+          const user = await client.users.getUser(userId);
+          email = (user.primaryEmailAddress?.emailAddress || "").toLowerCase();
+        } catch {
+          // If we can't verify the email, deny access.
+        }
+      }
 
       if (!allowedEmails.includes(email)) {
         return NextResponse.redirect(new URL("/admin/sign-in?error=unauthorized", req.url));
