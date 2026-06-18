@@ -11,9 +11,14 @@ import DealsSection from "@/components/dealssection";
 import CartSidebar from "@/components/cartsidebar";
 import ScrollMenu from "@/components/scrollmenu";
 import MenuSectionsClient from "@/components/menusectionclient";
-import { getStoreMenuPayload, type StoreMenuApiData } from "@/lib/server/storemenu";
+import {
+  getCachedStoreMenuPayload,
+  type StoreMenuApiData,
+} from "@/lib/server/storemenu";
 
-export const dynamic = "force-dynamic";
+// ✅ Do not force dynamic here.
+// This allows Next/Vercel to cache the store page for 30 seconds.
+export const dynamic = "force-static";
 export const revalidate = 30;
 export const dynamicParams = true;
 
@@ -62,7 +67,9 @@ function pickNonEmptyArray<T>(first?: T[], second?: T[]) {
 
 async function getInitialStoreMenu(slug: string): Promise<StoreMenuApiData> {
   try {
-    return await getStoreMenuPayload(slug);
+    // ✅ Cached server data.
+    // This prevents MongoDB from being hit on every page request.
+    return await getCachedStoreMenuPayload(slug);
   } catch (error) {
     console.error("Initial store menu load error:", error);
     return EMPTY_MENU_DATA;

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { getStoreMenuCategories } from "@/lib/server/menucategories";
 import { getStoreMenuProducts } from "@/lib/server/menuproducts";
 
@@ -144,7 +145,9 @@ function buildCategories(dbCategories: DbCategory[]) {
   return [POPULAR_CATEGORY, ...realCategories];
 }
 
-export async function getStoreMenuPayload(storeSlug: string): Promise<StoreMenuApiData> {
+export async function getStoreMenuPayload(
+  storeSlug: string
+): Promise<StoreMenuApiData> {
   const cleanSlug = slugify(storeSlug);
 
   if (!cleanSlug) {
@@ -168,14 +171,17 @@ export async function getStoreMenuPayload(storeSlug: string): Promise<StoreMenuA
     };
   }
 
-  // ✅ Main menu calls only the two queries needed for first paint.
-  // Modifier groups and upsells should stay on product detail/modal flow, not page load.
+  // ✅ Only two queries for first menu paint.
+  // Modifiers and upsells should load later in product modal/detail flow.
   const [rawCategories, rawProducts] = await Promise.all([
     getStoreMenuCategories(cleanSlug),
     getStoreMenuProducts(cleanSlug),
   ]);
 
-  const categories = buildCategories(Array.isArray(rawCategories) ? rawCategories : []);
+  const categories = buildCategories(
+    Array.isArray(rawCategories) ? rawCategories : []
+  );
+
   const products = Array.isArray(rawProducts) ? rawProducts : [];
 
   return {
@@ -196,4 +202,25 @@ export async function getStoreMenuPayload(storeSlug: string): Promise<StoreMenuA
     },
     updatedAt: new Date().toISOString(),
   };
+}
+
+// ✅ Cached wrapper for public store menu page/API.
+// This stops repeated MongoDB hits for the same store within 30 seconds.
+export async function getCachedStoreMenuPayload(
+  storeSlug: string
+): Promise<StoreMenuApiData> {
+  const cleanSlug = slugify(storeSlug);
+
+  if (!cleanSlug) {
+    return getStoreMenuPayload("");
+  }
+
+  return unstable_cache(
+    async () => getStoreMenuPayload(cleanSlug),
+    ["store-menu-payload", cleanSlug],
+    {
+      revalidate: 30,
+      tags: [`store-menu:${cleanSlug}`],
+    }
+  )();
 }
