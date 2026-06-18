@@ -10,6 +10,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
+  // Auth pages render standalone (no sidebar/header chrome)
+  if (pathname.startsWith("/admin/sign-in") || pathname.startsWith("/admin/sign-up")) {
+    return <>{children}</>;
+  }
+
   const pageTitle =
     pathname === "/admin"
       ? "Dashboard"
