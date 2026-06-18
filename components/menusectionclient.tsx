@@ -1,7 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import MenuSection from "@/components/menusection";
+
+const MenuSection = dynamic(() => import("@/components/menusection"), {
+  ssr: false,
+  loading: () => (
+    <section className="mx-auto max-w-[1600px] px-4 py-10 text-black dark:text-white">
+      <h2 className="text-2xl font-black">Loading menu...</h2>
+    </section>
+  ),
+});
 
 type MenuCategoryTab = {
   id?: string;
@@ -140,12 +149,7 @@ function getProductCategoryKeys(product: any) {
 }
 
 function productBelongsToCategory(product: any, category: MenuCategoryTab) {
-  const categoryKeys = [
-    category.id,
-    category.slug,
-    category.name,
-    category.title,
-  ]
+  const categoryKeys = [category.id, category.slug, category.name, category.title]
     .map((value) => slugify(value))
     .filter(Boolean);
 
@@ -190,8 +194,6 @@ export default function MenuSectionsClient({
   useEffect(() => {
     if (!storeSlug) return;
 
-    // ✅ Fallback only. Normal path already gets data from server helper.
-    // Do not use no-store here; let route/CDN Cache-Control work.
     if (products.length > 0 && visibleCategories.length > 0) return;
 
     const controller = new AbortController();
