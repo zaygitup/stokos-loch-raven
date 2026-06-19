@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/server/require-admin";
 import connectMongoDB from "@/lib/mongodb";
 import Store from "@/models/store";
 
@@ -26,6 +27,9 @@ const createSlug = (value: string) => {
 };
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectMongoDB();
 
@@ -51,6 +55,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectMongoDB();
 

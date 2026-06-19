@@ -4,7 +4,11 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-const MENU_POLL_INTERVAL_MS = 1000;
+// The customer menu only changes when an admin edits it. Polling the full-menu
+// endpoint every second per open tab was the main source of DB load. New page
+// loads already get fresh data via ISR; already-open tabs pick up admin changes
+// within this interval (and immediately on tab refocus via visibilitychange).
+const MENU_POLL_INTERVAL_MS = 60_000;
 
 const MenuSection = dynamic(() => import("@/components/menusection"), {
   ssr: false,
@@ -225,8 +229,6 @@ export default function MenuSectionsClient({
     let isFetching = false;
     let controller: AbortController | null = null;
 
-    console.log("MENU POLLING STARTED:", resolvedStoreSlug);
-
     async function loadMenu(silent = true) {
       if (isFetching) return;
 
@@ -240,8 +242,6 @@ export default function MenuSectionsClient({
       const menuUrl = `/api/store/${encodeURIComponent(
         resolvedStoreSlug
       )}/menu?_ts=${Date.now()}`;
-
-      console.log("FETCHING MENU API:", menuUrl);
 
       try {
         const response = await fetch(menuUrl, {
@@ -262,12 +262,6 @@ export default function MenuSectionsClient({
         const data = (await response.json()) as StoreMenuApiData;
 
         if (isMounted) {
-          console.log("MENU API UPDATED:", {
-            products: data.products?.length ?? data.menuProducts?.length ?? 0,
-            categories: data.categories?.length ?? data.menuCategories?.length ?? 0,
-            updatedAt: data.updatedAt,
-          });
-
           setClientMenuData(data);
         }
       } catch (error: any) {

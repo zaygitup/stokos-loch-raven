@@ -8,6 +8,8 @@ import ModifierGroupAssignment, {
   ALL_CATEGORIES_NAME,
 } from "@/models/modifiergroupassignment";
 import { rebuildStoreMenusAfterAdminChange } from "@/lib/server/storemenu-admin";
+import { escapeRegex } from "@/lib/regex";
+import { requireAdmin } from "@/lib/server/require-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -163,7 +165,7 @@ async function getGroupsWithAssignments(query: AnyObject = {}) {
   }
 
   if (query.search) {
-    const search = cleanString(query.search);
+    const search = escapeRegex(cleanString(query.search));
     groupQuery.$or = [
       { name: { $regex: search, $options: "i" } },
       { slug: { $regex: search, $options: "i" } },
@@ -229,6 +231,9 @@ async function replaceAssignments(modifierGroupId: string, assignments: unknown[
 }
 
 export async function GET(request: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 
@@ -259,6 +264,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 
@@ -324,6 +332,9 @@ const data = allGroups.find(
 }
 
 export async function PUT(request: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 
@@ -422,6 +433,9 @@ const data = allGroups.find(
 }
 
 export async function DELETE(request: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 

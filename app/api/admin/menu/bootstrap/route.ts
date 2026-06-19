@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/server/require-admin";
 import { getAdminMenuPayload } from "@/lib/server/admin-menu";
 
 export const runtime = "nodejs";
@@ -6,6 +7,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     const data = await getAdminMenuPayload();
 

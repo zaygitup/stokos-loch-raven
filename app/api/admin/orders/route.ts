@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/server/require-admin";
 import connectMongoDB from "@/lib/mongodb";
 import Order from "@/models/order";
+import { escapeRegex } from "@/lib/regex";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectMongoDB();
 
@@ -28,7 +33,7 @@ export async function GET(req: Request) {
     }
 
     if (search) {
-      const s = search.trim();
+      const s = escapeRegex(search.trim());
       query.$or = [
         { orderNumber: { $regex: s, $options: "i" } },
         { customerName: { $regex: s, $options: "i" } },

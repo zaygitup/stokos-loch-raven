@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/server/require-admin";
 import connectDB from "@/lib/mongodb";
 import UpsellRule from "@/models/upsellrule";
 import { rebuildStoreMenusAfterAdminChange } from "@/lib/server/storemenu-admin";
@@ -114,6 +115,9 @@ function buildUpsellPayload(body: any) {
 }
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 
@@ -148,6 +152,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 
@@ -205,6 +212,9 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 
@@ -268,6 +278,9 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
 

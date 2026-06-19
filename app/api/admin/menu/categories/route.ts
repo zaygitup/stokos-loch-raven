@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/server/require-admin";
 import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 import Category from "@/models/category";
@@ -684,6 +685,9 @@ function invalidateCategoryCache(...sources: any[]) {
 }
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
     const { searchParams } = new URL(req.url);
@@ -709,6 +713,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
     await ensureCategoryStoreConfigIndexes();
@@ -755,6 +762,9 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
     await ensureCategoryStoreConfigIndexes();
@@ -848,6 +858,9 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     await connectDB();
     await ensureCategoryStoreConfigIndexes();

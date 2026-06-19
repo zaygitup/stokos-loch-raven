@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/server/require-admin";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { STORES } from "@/lib/data/stores";
 import { rebuildStoreMenu } from "@/lib/server/storemenu-rebuilder";
@@ -113,6 +114,9 @@ async function rebuildRequestedStores(storeSlugs: string[], includeData = false)
 }
 
 export async function GET(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     const { searchParams } = new URL(req.url);
 
@@ -167,6 +171,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await req.json().catch(() => ({}));
 

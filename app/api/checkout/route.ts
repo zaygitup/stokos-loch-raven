@@ -6,18 +6,18 @@ import Order from "@/models/order";
 import Store from "@/models/store";
 import { validatePromoCode, incrementPromoUsage } from "@/lib/promo";
 import { awardLoyaltyPoints } from "@/lib/loyalty";
+import { toCents, toDollars, percentOfCents, formatCents } from "@/lib/money";
 
 function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!);
 }
 
-function buildConnectPaymentIntentData(amountTotal: number) {
+function buildConnectPaymentIntentData(amountTotalCents: number) {
   const connectAccountId = process.env.STRIPE_CONNECT_ACCOUNT_ID?.trim();
   if (!connectAccountId) return undefined;
 
   const feePercent = Number(process.env.STRIPE_PLATFORM_FEE_PERCENT ?? 0);
-  const amountCents = Math.round(amountTotal * 100);
-  const feeAmount = Math.round(amountCents * (feePercent / 100));
+  const feeAmount = percentOfCents(amountTotalCents, feePercent);
 
   return {
     application_fee_amount: feeAmount,
@@ -75,9 +75,16 @@ export async function POST(req: Request) {
 
     const stripe = getStripe();
     const cleanOrigin = origin.replace(/\/$/, "");
-    const storeSlug = slug || orderStore || "towson";
+    const storeSlug = String(slug || orderStore || "").trim();
     const formattedDay = orderDay || "Today";
     const formattedTime = orderTime || "ASAP";
+
+    if (!storeSlug) {
+      return NextResponse.json(
+        { error: "Store is required" },
+        { status: 400 }
+      );
+    }
 
     // Fetch store for delivery fee, tax, minimum order
     await connectMongoDB();
@@ -89,51 +96,70 @@ export async function POST(req: Request) {
       minimumOrder?: number;
     } | null;
 
-    const storeName = storeDoc?.name || storeSlug;
-    const deliveryFee =
-      orderType === "delivery" ? Number(storeDoc?.deliveryFee ?? 0) : 0;
-    const taxRate = Number(storeDoc?.taxRate ?? 0);
-    const minimumOrder = Number(storeDoc?.minimumOrder ?? 0);
+    if (!storeDoc) {
+      return NextResponse.json(
+        { error: "Store not found" },
+        { status: 404 }
+      );
+    }
 
-    // Compute money breakdown
-    const subtotal = items.reduce(
+    const storeName = storeDoc.name || storeSlug;
+    const taxRate = Number(storeDoc.taxRate ?? 0);
+
+    // All money math is done in integer cents (see lib/money.ts) so the
+    // persisted total always matches the sum Stripe charges per line item.
+    const deliveryFeeCents =
+      orderType === "delivery" ? toCents(storeDoc.deliveryFee ?? 0) : 0;
+    const minimumOrderCents = toCents(storeDoc.minimumOrder ?? 0);
+
+    const subtotalCents = items.reduce(
       (acc: number, item: { price: number; quantity: number }) =>
-        acc + Number(item.price) * Number(item.quantity || 1),
+        acc + toCents(item.price) * Number(item.quantity || 1),
       0
     );
 
-    if (minimumOrder > 0 && subtotal < minimumOrder) {
+    if (minimumOrderCents > 0 && subtotalCents < minimumOrderCents) {
       return NextResponse.json(
         {
-          error: `Minimum order amount is $${minimumOrder.toFixed(2)}. Your subtotal is $${subtotal.toFixed(2)}.`,
+          error: `Minimum order amount is ${formatCents(minimumOrderCents)}. Your subtotal is ${formatCents(subtotalCents)}.`,
         },
         { status: 400 }
       );
     }
 
-    const taxAmount = Math.round((subtotal * taxRate) / 100 * 100) / 100;
+    const taxCents = percentOfCents(subtotalCents, taxRate);
 
-    let discountAmount = 0;
+    let discountCents = 0;
     let appliedPromoCode: string | undefined;
 
     if (promoCode) {
-      const promoResult = await validatePromoCode(String(promoCode), subtotal);
+      const promoResult = await validatePromoCode(
+        String(promoCode),
+        toDollars(subtotalCents)
+      );
       if (!promoResult.valid) {
         return NextResponse.json({ error: promoResult.message }, { status: 400 });
       }
-      discountAmount = promoResult.discountAmount;
+      discountCents = toCents(promoResult.discountAmount);
       appliedPromoCode = promoResult.code;
     }
 
-    const amountTotal =
-      Math.round((subtotal + deliveryFee + taxAmount - discountAmount) * 100) / 100;
+    const amountTotalCents =
+      subtotalCents + deliveryFeeCents + taxCents - discountCents;
 
-    if (amountTotal <= 0) {
+    if (amountTotalCents <= 0) {
       return NextResponse.json(
         { error: "Order total must be greater than zero" },
         { status: 400 }
       );
     }
+
+    // Dollar values for persistence, derived from the authoritative cents.
+    const subtotal = toDollars(subtotalCents);
+    const deliveryFee = toDollars(deliveryFeeCents);
+    const taxAmount = toDollars(taxCents);
+    const discountAmount = toDollars(discountCents);
+    const amountTotal = toDollars(amountTotalCents);
 
     const { userId: clerkUserId } = await auth();
 
@@ -179,7 +205,7 @@ export async function POST(req: Request) {
                 ? descriptionParts.join(" | ")
                 : undefined,
             },
-            unit_amount: Math.round(Number(item.price) * 100),
+            unit_amount: toCents(item.price),
           },
           quantity: item.quantity || 1,
         };
@@ -188,34 +214,34 @@ export async function POST(req: Request) {
 
     const extraLineItems = [];
 
-    if (deliveryFee > 0) {
+    if (deliveryFeeCents > 0) {
       extraLineItems.push({
         price_data: {
           currency: "usd",
           product_data: { name: "Delivery Fee" },
-          unit_amount: Math.round(deliveryFee * 100),
+          unit_amount: deliveryFeeCents,
         },
         quantity: 1,
       });
     }
 
-    if (taxAmount > 0) {
+    if (taxCents > 0) {
       extraLineItems.push({
         price_data: {
           currency: "usd",
           product_data: { name: `Tax (${taxRate}%)` },
-          unit_amount: Math.round(taxAmount * 100),
+          unit_amount: taxCents,
         },
         quantity: 1,
       });
     }
 
-    if (discountAmount > 0) {
+    if (discountCents > 0) {
       extraLineItems.push({
         price_data: {
           currency: "usd",
           product_data: { name: `Promo (${appliedPromoCode})` },
-          unit_amount: -Math.round(discountAmount * 100),
+          unit_amount: -discountCents,
         },
         quantity: 1,
       });
@@ -247,8 +273,8 @@ export async function POST(req: Request) {
       }) => ({
         name: item.title || item.name || "Item",
         quantity: Number(item.quantity || 1),
-        unitPrice: Number(item.price),
-        amount: Number(item.price) * Number(item.quantity || 1),
+        unitPrice: toDollars(toCents(item.price)),
+        amount: toDollars(toCents(item.price) * Number(item.quantity || 1)),
         size: item.size,
         toppings: item.toppings
           ? Object.fromEntries(Object.entries(item.toppings))
@@ -282,7 +308,7 @@ export async function POST(req: Request) {
       statusHistory: [{ status: "Placed", at: new Date() }],
     });
 
-    const connectPaymentIntentData = buildConnectPaymentIntentData(amountTotal);
+    const connectPaymentIntentData = buildConnectPaymentIntentData(amountTotalCents);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",

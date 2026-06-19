@@ -108,6 +108,16 @@ const OrderSchema = new Schema(
   }
 );
 
+// Compound indexes for the common sorted-list queries. Without these, the
+// admin order list (filter by store/status, newest first) and the account
+// order history (a user's paid orders, newest first) cannot use a single
+// index for both the filter and the createdAt sort.
+// Note: autoIndex is disabled in production (see lib/mongodb.ts), so these
+// must be synced there via Order.syncIndexes() / a one-off migration.
+OrderSchema.index({ storeSlug: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ clerkUserId: 1, paymentStatus: 1, createdAt: -1 });
+
 const Order = mongoose.models.Order || mongoose.model("Order", OrderSchema);
 
 export default Order;
