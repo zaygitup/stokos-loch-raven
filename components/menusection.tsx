@@ -46,7 +46,6 @@ export default function MenuSection({
         md:px-6
         lg:px-8
         xl:px-10
-        2xl:px-0
         pt-6 pb-8
         md:pt-8 md:pb-10
       "
@@ -56,12 +55,12 @@ export default function MenuSection({
           <h2
             className="
               text-black dark:text-white
-              text-[26px]
+              text-[22px]
               font-black uppercase tracking-wide
               leading-tight
-              sm:text-[30px]
-              md:text-[32px]
-              lg:text-4xl
+              sm:text-[24px]
+              md:text-[26px]
+              lg:text-3xl
             "
           >
             {title}

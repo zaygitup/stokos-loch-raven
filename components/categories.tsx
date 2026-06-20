@@ -148,7 +148,6 @@ export default function Categories({ initialCategories = [] }: CategoriesProps) 
             md:gap-3 md:px-6
             lg:px-3
             xl:px-10
-            2xl:px-0
           "
         >
           {categories.map((cat) => {

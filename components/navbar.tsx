@@ -120,7 +120,7 @@ export default function Navbar() {
   return (
     <>
       <header className="top-0 z-50 w-full border-b border-zinc-800 bg-green-600 text-white shadow-md dark:bg-green-700">
-        <div className="mx-auto w-full max-w-[1600px] px-4 md:px-6">
+        <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10">
           {/* Top Row */}
           <div className="relative flex min-h-[76px] items-center justify-between gap-3 md:min-h-[82px] 2xl:h-[86px]">
             {/* Desktop Navigation Only */}

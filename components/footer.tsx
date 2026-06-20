@@ -19,7 +19,6 @@ export default function Footer({ store }: FooterProps) {
           md:px-8 md:py-12
           lg:px-10 lg:py-14
           xl:px-12
-          2xl:px-0
         "
       >
         <div

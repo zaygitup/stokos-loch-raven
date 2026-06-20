@@ -129,8 +129,8 @@ export default function StartOrder() {
   return (
     <>
       <section className="w-full bg-white py-3 dark:bg-black md:py-6">
-        <div className="mx-auto flex max-w-[1600px] flex-col items-start gap-3 px-4 sm:px-6 md:flex-row md:items-center md:gap-8">
-          <h2 className="whitespace-nowrap text-left text-2xl font-black uppercase tracking-tight text-black dark:text-white sm:text-2xl md:text-4xl">
+        <div className="mx-auto flex max-w-[1600px] flex-col items-start gap-3 px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10 md:flex-row md:items-center md:gap-8">
+          <h2 className="whitespace-nowrap text-left text-xl font-black uppercase tracking-tight text-black dark:text-white sm:text-2xl md:text-3xl">
             Start Your Order
           </h2>
 

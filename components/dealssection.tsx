@@ -330,17 +330,16 @@ export default function DealsSection({
             md:px-6
             lg:px-8
             xl:px-10
-            2xl:px-0
           "
         >
           <div className="mb-4 flex items-center justify-between gap-4 md:mb-6">
             <h2
               className="
-                text-[26px] font-black uppercase leading-none tracking-tight
+                text-[22px] font-black uppercase leading-none tracking-tight
                 text-black dark:text-white
-                sm:text-[30px]
-                md:text-[34px]
-                lg:text-4xl
+                sm:text-[24px]
+                md:text-[26px]
+                lg:text-3xl
               "
             >
               Explore More Deals

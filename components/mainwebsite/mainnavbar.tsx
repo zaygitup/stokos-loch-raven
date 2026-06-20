@@ -44,7 +44,7 @@ export default function MainNavbar() {
 
   return (
     <header className="top-0 z-50 w-full bg-[#16A34A] text-white shadow-sm transition-colors duration-300 dark:border-b dark:border-white/10 dark:bg-[#003b11]">
-      <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10 2xl:px-0">
+      <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10">
         {/* Top Row */}
         <div className="relative flex min-h-[76px] items-center justify-between gap-4 xl:h-[82px]">
           {/* Desktop Nav */}
