@@ -42,9 +42,6 @@ next-env.d.ts
 # clerk local config
 /.clerk/
 
-# local handoffs, audits, checklists (not for repo)
-/docs/
-
 # agent / IDE local
 /.cursor/
 AGENTS.md
