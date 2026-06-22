@@ -8,6 +8,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
+  Shield,
   ShoppingBag,
   Store,
   StoreIcon,
@@ -44,9 +45,15 @@ const navItems: SidebarItem[] = [
   },
   {
     label: "Store Management",
-    description: "Multi Stores  and details",
+    description: "Multi Stores and details",
     href: "/admin/stores",
     icon: StoreIcon,
+  },
+  {
+    label: "Admin Accounts",
+    description: "Manage admin emails",
+    href: "/admin/admins",
+    icon: Shield,
   },
 ];
 

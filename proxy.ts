@@ -31,31 +31,55 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(signInUrl);
     }
 
-    // ADMIN_EMAILS allowlist check
+    const { sessionClaims } = await auth();
+    let email = ((sessionClaims?.email as string) || "").toLowerCase();
+
+    // Fallback: session token may not include email if Clerk Dashboard
+    // session customization is not configured — fetch from Clerk API instead.
+    if (!email) {
+      try {
+        const client = await getClerkClient();
+        const user = await client.users.getUser(userId);
+        email = (user.primaryEmailAddress?.emailAddress || "").toLowerCase();
+      } catch {
+        // If we can't verify the email, deny access.
+      }
+    }
+
     const allowedEmails = (process.env.ADMIN_EMAILS || "")
       .split(",")
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
 
-    if (allowedEmails.length > 0) {
-      const { sessionClaims } = await auth();
-      let email = ((sessionClaims?.email as string) || "").toLowerCase();
+    let isAuthorized = allowedEmails.includes(email);
+    let hasAdmins = allowedEmails.length > 0;
 
-      // Fallback: session token may not include email if Clerk Dashboard
-      // session customization is not configured — fetch from Clerk API instead.
-      if (!email && userId) {
-        try {
-          const client = await getClerkClient();
-          const user = await client.users.getUser(userId);
-          email = (user.primaryEmailAddress?.emailAddress || "").toLowerCase();
-        } catch {
-          // If we can't verify the email, deny access.
+    // If not authorized by .env list, check the database via check-admin API
+    if (!isAuthorized && email) {
+      try {
+        const checkUrl = new URL("/api/auth/check-admin", req.url);
+        checkUrl.searchParams.set("email", email);
+
+        const checkRes = await fetch(checkUrl.toString(), {
+          headers: {
+            "x-internal-secret": process.env.CLERK_SECRET_KEY || "",
+          },
+        });
+
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          isAuthorized = !!checkData.isAdmin;
+          if (checkData.hasAdmins) {
+            hasAdmins = true;
+          }
         }
+      } catch (error) {
+        console.error("Middleware admin DB check error:", error);
       }
+    }
 
-      if (!allowedEmails.includes(email)) {
-        return NextResponse.redirect(new URL("/admin/sign-in?error=unauthorized", req.url));
-      }
+    if (!isAuthorized && hasAdmins) {
+      return NextResponse.redirect(new URL("/admin/sign-in?error=unauthorized", req.url));
     }
 
     return NextResponse.next();
