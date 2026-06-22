@@ -50,8 +50,3 @@ next-env.d.ts
 AGENTS.md
 CLAUDE.md
 
-# next-pwa generated (built at deploy time)
-/public/sw.js
-/public/sw.js.map
-/public/workbox-*.js
-/public/workbox-*.js.map

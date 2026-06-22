@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import ServiceWorkerRegister from "@/components/serviceworkerregister";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -69,6 +70,7 @@ export default function RootLayout({
             `,
             }}
           />
+          <ServiceWorkerRegister />
         </ClerkProvider>
       </body>
     </html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#16A34A" />
+  <title>You're Offline – Stoko's</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: #16A34A;
+      color: #fff;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .icon {
+      font-size: 4rem;
+      margin-bottom: 1.25rem;
+      animation: bounce 2s infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    h1 {
+      font-size: clamp(1.5rem, 5vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+
+    p {
+      font-size: 1rem;
+      opacity: 0.85;
+      max-width: 28ch;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #fff;
+      color: #16A34A;
+      font-weight: 800;
+      font-size: 0.875rem;
+      text-decoration: none;
+      padding: 0.75rem 1.75rem;
+      border-radius: 9999px;
+      transition: opacity 0.2s;
+    }
+
+    a:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="icon">🍕</div>
+  <h1>You're Offline</h1>
+  <p>Check your connection and try again — our menu is worth the wait!</p>
+  <a href="/">Try Again</a>
+</body>
+</html>
