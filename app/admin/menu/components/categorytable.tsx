@@ -50,6 +50,7 @@ type CategoryRow = {
 type CategoryGroup = {
   key: string;
   name: string;
+  category: Category;
   rows: CategoryRow[];
   totalProducts: number;
   sortOrders: number[];
@@ -528,6 +529,7 @@ function buildGroupedCategories(
         map.set(key, {
           key,
           name: category.name || "Untitled Category",
+          category,
           rows: [],
           totalProducts: 0,
           sortOrders: [Number(category.sortOrder || 0)],
@@ -639,14 +641,15 @@ export default function CategoryTable({
             <tr>
               <TableHead>Category</TableHead>
               <TableHead>Store</TableHead>
+              <TableHead>Homepage</TableHead>
 
               {!isAllStoresView && (
                 <>
                   <TableHead>Products</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Action</TableHead>
                 </>
               )}
+              {!hideActions && <TableHead>Action</TableHead>}
             </tr>
           </thead>
 
@@ -685,6 +688,34 @@ export default function CategoryTable({
                         ))}
                       </div>
                     </td>
+
+                    <td className="px-5 py-5">
+                      {(group.category as any).showOnHomePage ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-black text-zinc-500">
+                          No
+                        </span>
+                      )}
+                    </td>
+
+                    {!hideActions && (
+                      <td className="px-5 py-5">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onEdit(group.category)}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 transition hover:border-green-700 hover:bg-green-50 hover:text-green-700"
+                            aria-label="Edit category"
+                          >
+                            <Pencil size={17} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               : paginatedCategories.map((category, index) => {
@@ -737,6 +768,19 @@ export default function CategoryTable({
                         </div>
                       </td>
 
+                      <td className="px-5 py-5">
+                        {(category as any).showOnHomePage ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-black text-zinc-500">
+                            No
+                          </span>
+                        )}
+                      </td>
+
                       <td className="px-5 py-5 text-sm font-black">
                         {categoryProductsCount}
                       </td>
@@ -745,21 +789,23 @@ export default function CategoryTable({
                         <StatusBadge status={category.status} />
                       </td>
 
-                      <td className="px-5 py-5">
-                        <RowActionButtons
-                          onEdit={() => onEdit(category)}
-                          onDelete={() => {
-                            if (!deleteId) {
-                              alert(
-                                `Store config ID missing for ${storeName}. Please refresh data or check categories API.`
-                              );
-                              return;
-                            }
+                      {!hideActions && (
+                        <td className="px-5 py-5">
+                          <RowActionButtons
+                            onEdit={() => onEdit(category)}
+                            onDelete={() => {
+                              if (!deleteId) {
+                                alert(
+                                  `Store config ID missing for ${storeName}. Please refresh data or check categories API.`
+                                );
+                                return;
+                              }
 
-                            onDelete(deleteId);
-                          }}
-                        />
-                      </td>
+                              onDelete(deleteId);
+                            }}
+                          />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

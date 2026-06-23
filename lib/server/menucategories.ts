@@ -241,3 +241,104 @@ async function getStoreMenuCategoriesFromDB(
 export async function getStoreMenuCategories(storeSlug: string) {
   return getStoreMenuCategoriesFromDB(normalizeStoreId(storeSlug));
 }
+
+export async function getHomePageCategories() {
+  await connectDB();
+
+  const categories = await Category.find({
+    showOnHomePage: true,
+    $or: [{ status: "Active" }, { status: { $exists: false } }, { status: "" }],
+  })
+    .select({
+      id: 1,
+      name: 1,
+      slug: 1,
+      description: 1,
+      image: 1,
+      sortOrder: 1,
+    })
+    .sort({ sortOrder: 1, updatedAt: -1 })
+    .lean<any[]>()
+    .maxTimeMS(5000);
+
+  return uniqueBySlug(
+    categories.map((category) => {
+      const name = cleanString(category.name);
+      const slug = slugify(category.slug || name);
+
+      return {
+        id: slug,
+        name,
+        slug,
+        description: cleanString(category.description),
+        image: cleanString(category.image),
+        sortOrder: cleanNumber(category.sortOrder),
+      };
+    })
+  ).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+export async function getStoresForCategory(categorySlug: string) {
+  if (!categorySlug) return [];
+
+  await connectDB();
+
+  const cleanSlug = slugify(categorySlug);
+
+  const configs = await CategoryStoreConfig.find({
+    $or: [
+      { categorySlug: cleanSlug },
+      { categoryId: cleanSlug },
+      { categoryName: cleanSlug },
+      { categoryName: { $regex: new RegExp(`^${cleanSlug}$`, "i") } }
+    ],
+    $and: [
+      {
+        $or: [
+          { status: "Active" },
+          { status: { $exists: false } },
+          { status: "" },
+        ],
+      },
+      {
+        $or: [
+          { available: true },
+          { isAvailable: true },
+          {
+            available: { $exists: false },
+            isAvailable: { $exists: false },
+          },
+        ],
+      },
+    ],
+  })
+    .select({ storeId: 1 })
+    .lean<any[]>()
+    .maxTimeMS(5000);
+
+  const storeKeys = Array.from(
+    new Set(configs.map((c) => normalizeStoreId(c.storeId)).filter(Boolean))
+  );
+
+  if (!storeKeys.length) return [];
+
+  // Match the storeKeys against actual stores to get the store slugs.
+  // Assuming Store model has slug or id matching storeId.
+  const objectIds = getObjectIds(storeKeys);
+  const storeOrQuery: any[] = [
+    { id: { $in: storeKeys } },
+    { slug: { $in: storeKeys } },
+  ];
+  if (objectIds.length) {
+    storeOrQuery.push({ _id: { $in: objectIds } });
+  }
+
+  const stores = await Store.find({
+    status: "Active",
+    $or: storeOrQuery,
+  })
+    .select({ slug: 1 })
+    .lean<any[]>();
+
+  return Array.from(new Set(stores.map((s) => cleanString(s.slug))));
+}

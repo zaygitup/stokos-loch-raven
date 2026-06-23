@@ -200,6 +200,7 @@ function buildCategoryPayload(body: any) {
     slug: slugify(body?.slug || body?.categorySlug || name),
     description: cleanString(body?.description),
     image: cleanString(body?.image || body?.imageUrl || body?.thumbnail),
+    showOnHomePage: Boolean(body?.showOnHomePage),
     status: cleanStatus(body?.status),
     sortOrder: cleanNumber(body?.sortOrder, 0),
   };
@@ -468,6 +469,7 @@ function formatCategoryWithConfigs(category: any, configs: any[] = []) {
     slug,
     description: cleanString(cleanCategory.description),
     image: cleanString(cleanCategory.image),
+    showOnHomePage: Boolean(cleanCategory.showOnHomePage),
     status: cleanStatus(cleanCategory.status || firstConfig?.status),
     sortOrder: cleanNumber(
       cleanCategory.sortOrder ?? firstConfig?.sortOrder,

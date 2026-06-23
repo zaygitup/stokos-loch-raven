@@ -1016,6 +1016,9 @@ function normalizeCategory(
     categoryId,
     name,
     slug,
+    description: String(categoryObj.description || "").trim(),
+    image: String(categoryObj.image || "").trim(),
+    showOnHomePage: Boolean(categoryObj.showOnHomePage),
     storeId: primaryStoreId,
     storeSlug: primaryStoreId,
     storeIds,
@@ -1032,7 +1035,7 @@ function normalizeCategory(
     available: categoryObj.available !== false && categoryObj.isAvailable !== false,
     isAvailable: categoryObj.available !== false && categoryObj.isAvailable !== false,
     status: category.status || "Active",
-    sortOrder: Number(category.sortOrder || 1),
+    sortOrder: Number(category.sortOrder ?? 0),
   } as CategoryWithMultiStore;
 }
 

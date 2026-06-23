@@ -183,6 +183,7 @@ export type Category = {
   slug?: string;
   description?: string;
   image?: string;
+  showOnHomePage?: boolean;
 
   sortOrder: number;
   status: CategoryStatus;

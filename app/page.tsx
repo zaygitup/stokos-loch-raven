@@ -24,7 +24,17 @@ function StoreSelectionFallback() {
   );
 }
 
-export default function Page() {
+import { getStoresForCategory } from "@/lib/server/menucategories";
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const category = params.category as string | undefined;
+  const availableStoreSlugs = category ? await getStoresForCategory(category) : null;
+
   return (
     <>
       <MainNavbar />
@@ -38,7 +48,7 @@ export default function Page() {
 
         <Suspense fallback={<StoreSelectionFallback />}>
           <section id="stores">
-            <MainStoreSelection />
+            <MainStoreSelection availableStoreSlugs={availableStoreSlugs} />
           </section>
         </Suspense>
 

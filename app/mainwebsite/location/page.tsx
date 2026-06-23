@@ -24,10 +24,20 @@ function LocationPageFallback() {
   );
 }
 
-export default function LocationPage() {
+import { getStoresForCategory } from "@/lib/server/menucategories";
+
+export default async function LocationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const category = params.category as string | undefined;
+  const availableStoreSlugs = category ? await getStoresForCategory(category) : null;
+
   return (
     <Suspense fallback={<LocationPageFallback />}>
-      <LocationStoreCards />
+      <LocationStoreCards availableStoreSlugs={availableStoreSlugs} />
     </Suspense>
   );
 }

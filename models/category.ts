@@ -45,6 +45,11 @@ const CategorySchema = new Schema(
       trim: true,
     },
 
+    showOnHomePage: {
+      type: Boolean,
+      default: false,
+    },
+
     // Legacy only. New store-wise assignment lives in CategoryStoreConfig.
     storeId: {
       type: String,
@@ -89,6 +94,7 @@ CategorySchema.pre("validate", function () {
   doc.name = cleanString(doc.name);
   doc.description = cleanString(doc.description);
   doc.image = cleanString(doc.image);
+  doc.showOnHomePage = Boolean(doc.showOnHomePage);
   doc.storeId = "";
   doc.sortOrder = cleanNumber(doc.sortOrder);
 

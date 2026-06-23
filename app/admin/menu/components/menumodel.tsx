@@ -441,6 +441,7 @@ export default function MenuModal({
           ref={categoryRef}
           item={item as Category | null}
           categories={selectedStoreCategories}
+          stores={storeOptions}
           selectedStoreId={activeFormStoreId}
           selectedStoreIds={isCategoryAdd ? selectedStoreIds : [activeFormStoreId]}
           onSave={handleFormSave}

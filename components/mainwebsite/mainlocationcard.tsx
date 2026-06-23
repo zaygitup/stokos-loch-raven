@@ -54,7 +54,11 @@ const STORES: StoreLocation[] = [
   },
 ];
 
-export default function LocationStoreCards() {
+export default function LocationStoreCards({
+  availableStoreSlugs,
+}: {
+  availableStoreSlugs?: string[] | null;
+}) {
   const searchParams = useSearchParams();
 
   const action = searchParams.get("action");
@@ -111,7 +115,9 @@ export default function LocationStoreCards() {
         </div>
 
         <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-3 md:gap-3 lg:gap-6">
-          {STORES.map((store) => {
+          {STORES.filter(store => 
+            !availableStoreSlugs || availableStoreSlugs.length === 0 || availableStoreSlugs.includes(store.slug)
+          ).map((store) => {
             const openNow = isStoreOpen(store.schedule);
 
             return (
