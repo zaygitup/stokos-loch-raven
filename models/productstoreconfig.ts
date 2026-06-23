@@ -215,6 +215,10 @@ const ProductStoreConfigSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    isFeaturedDeal: {
+      type: Boolean,
+      default: false,
+    },
     status: {
       type: String,
       enum: ["Active", "Draft", "Hidden", "Inactive"],
@@ -250,6 +254,8 @@ ProductStoreConfigSchema.pre("validate", function () {
   const popular = cleanBoolean(doc.isPopular, cleanBoolean(doc.showInPopular));
   doc.isPopular = popular;
   doc.showInPopular = popular;
+
+  doc.isFeaturedDeal = cleanBoolean(doc.isFeaturedDeal);
 
   if (!Array.isArray(doc.sizes) || doc.sizes.length === 0) {
     doc.sizes = [
@@ -302,6 +308,7 @@ ProductStoreConfigSchema.index({ storeId: 1, status: 1, categorySlug: 1, sortOrd
 ProductStoreConfigSchema.index({ storeId: 1, categoryId: 1, status: 1, sortOrder: 1 });
 ProductStoreConfigSchema.index({ storeId: 1, isPopular: 1, status: 1, sortOrder: 1 });
 ProductStoreConfigSchema.index({ storeId: 1, showInPopular: 1, status: 1, sortOrder: 1 });
+ProductStoreConfigSchema.index({ storeId: 1, isFeaturedDeal: 1, status: 1, sortOrder: 1 });
 ProductStoreConfigSchema.index({ productId: 1 });
 ProductStoreConfigSchema.index({ categoryId: 1 });
 

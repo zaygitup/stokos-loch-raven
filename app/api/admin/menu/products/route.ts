@@ -810,6 +810,7 @@ async function buildProductStoreConfigPayload(raw: any, productId: string) {
     available: raw.isAvailable !== false && raw.available !== false,
     isPopular: cleanBoolean(raw.isPopular, cleanBoolean(raw.showInPopular)),
     showInPopular: cleanBoolean(raw.isPopular, cleanBoolean(raw.showInPopular)),
+    isFeaturedDeal: cleanBoolean(raw.isFeaturedDeal),
 
     sortOrder: Number(raw.sortOrder || 0),
     status: cleanProductStatus(raw.status),

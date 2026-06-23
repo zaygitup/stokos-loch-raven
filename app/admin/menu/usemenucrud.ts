@@ -203,7 +203,7 @@ async function apiRebuildStoreMenuSnapshot(
   if (type === "categories") return;
 
   try {
-    const res = await fetch("/api/admin/storemenus/rebuild", {
+    const res = await fetch("/api/admin/menu/storemenus/rebuild", {
       method: "POST",
       cache: "no-store",
       headers: {

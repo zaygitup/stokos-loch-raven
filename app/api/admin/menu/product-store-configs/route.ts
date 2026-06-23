@@ -365,6 +365,7 @@ async function buildPayload(body: any) {
     available: body.isAvailable !== false && body.available !== false,
     isPopular: cleanBoolean(body.isPopular, cleanBoolean(body.showInPopular)),
     showInPopular: cleanBoolean(body.isPopular, cleanBoolean(body.showInPopular)),
+    isFeaturedDeal: cleanBoolean(body.isFeaturedDeal),
     status: cleanProductStatus(body.status),
     sortOrder: Number(body.sortOrder || 0),
   };

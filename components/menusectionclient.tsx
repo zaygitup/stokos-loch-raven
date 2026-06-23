@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // The customer menu only changes when an admin edits it. Polling the full-menu
 // endpoint every second per open tab was the main source of DB load. New page
@@ -17,6 +17,13 @@ const MenuSection = dynamic(() => import("@/components/menusection"), {
       <h2 className="text-2xl font-black">Loading menu...</h2>
     </section>
   ),
+});
+
+// Shared product modal, opened directly when the page is deep-linked with
+// ?product=<slug> (e.g. from a home page Featured Deal "Order Deal" link).
+const ProductModal = dynamic(() => import("@/components/ProductModal"), {
+  ssr: false,
+  loading: () => null,
 });
 
 type MenuCategoryTab = {
@@ -188,6 +195,11 @@ export default function MenuSectionsClient({
   const [clientMenuData, setClientMenuData] = useState<StoreMenuApiData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const searchParams = useSearchParams();
+  const productParam = searchParams.get("product");
+  const [deepLinkProduct, setDeepLinkProduct] = useState<any | null>(null);
+  const handledProductParamRef = useRef<string | null>(null);
+
   const initialOnlyProducts = useMemo(() => {
     return pickNonEmptyArray(
       initialMenuData?.products,
@@ -304,6 +316,32 @@ export default function MenuSectionsClient({
     };
   }, [resolvedStoreSlug, hasInitialData]);
 
+  // Open a product directly when deep-linked via ?product=<slug>.
+  // The ref guard ensures a manual close is not undone by the menu poll
+  // refreshing the products array (which would otherwise re-trigger this).
+  useEffect(() => {
+    if (!productParam) {
+      handledProductParamRef.current = null;
+      return;
+    }
+
+    if (handledProductParamRef.current === productParam) return;
+    if (!products.length) return;
+
+    const target = slugify(productParam);
+
+    const match = products.find((product) =>
+      [product?.slug, product?.id, product?.productId, product?.title, product?.name]
+        .filter(Boolean)
+        .some((value) => slugify(value) === target)
+    );
+
+    if (!match) return;
+
+    handledProductParamRef.current = productParam;
+    setDeepLinkProduct(match);
+  }, [productParam, products]);
+
   if (!resolvedStoreSlug) return null;
 
   if (products.length === 0 && isLoading) {
@@ -328,51 +366,53 @@ export default function MenuSectionsClient({
     );
   }
 
-  if (visibleCategories.length === 0) {
-    return (
-      <MenuSection
-        id="all-menu"
-        title="Menu"
-        subtitle=""
-        products={products}
-      />
+  const renderedSections =
+    visibleCategories.length === 0
+      ? []
+      : visibleCategories
+          .map((category) => {
+            const sectionProducts = isPopularCategory(category)
+              ? products.filter((product) => isProductPopular(product))
+              : products.filter((product) =>
+                  productBelongsToCategory(product, category)
+                );
+
+            if (sectionProducts.length === 0) {
+              return null;
+            }
+
+            const sectionId = getCategoryKey(category);
+
+            return (
+              <MenuSection
+                key={sectionId}
+                id={sectionId}
+                title={getCategoryTitle(category)}
+                subtitle={category.description || ""}
+                products={sectionProducts}
+              />
+            );
+          })
+          .filter(Boolean);
+
+  const menuContent =
+    renderedSections.length === 0 ? (
+      <MenuSection id="all-menu" title="Menu" subtitle="" products={products} />
+    ) : (
+      <>{renderedSections}</>
     );
-  }
 
-  const renderedSections = visibleCategories
-    .map((category) => {
-      const sectionProducts = isPopularCategory(category)
-        ? products.filter((product) => isProductPopular(product))
-        : products.filter((product) => productBelongsToCategory(product, category));
+  return (
+    <>
+      {menuContent}
 
-      if (sectionProducts.length === 0) {
-        return null;
-      }
-
-      const sectionId = getCategoryKey(category);
-
-      return (
-        <MenuSection
-          key={sectionId}
-          id={sectionId}
-          title={getCategoryTitle(category)}
-          subtitle={category.description || ""}
-          products={sectionProducts}
+      {deepLinkProduct ? (
+        <ProductModal
+          product={deepLinkProduct}
+          isOpen={Boolean(deepLinkProduct)}
+          onClose={() => setDeepLinkProduct(null)}
         />
-      );
-    })
-    .filter(Boolean);
-
-  if (renderedSections.length === 0) {
-    return (
-      <MenuSection
-        id="all-menu"
-        title="Menu"
-        subtitle=""
-        products={products}
-      />
-    );
-  }
-
-  return <>{renderedSections}</>;
+      ) : null}
+    </>
+  );
 }

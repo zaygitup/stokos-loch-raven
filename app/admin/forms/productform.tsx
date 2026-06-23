@@ -82,6 +82,7 @@ type ProductStoreConfigState = {
   storeName?: string;
   isAvailable: boolean;
   isPopular: boolean;
+  isFeaturedDeal: boolean;
   category: string;
   categoryId: string;
   categoryName: string;
@@ -1258,6 +1259,10 @@ function normalizeStoreConfig(params: {
       raw.isPopular,
       cleanBoolean(raw.showInPopular, useLegacy ? cleanBoolean(legacy.isPopular) : false)
     ),
+    isFeaturedDeal: cleanBoolean(
+      raw.isFeaturedDeal,
+      useLegacy ? cleanBoolean(legacy.isFeaturedDeal) : false
+    ),
     category: categoryId || categoryName,
     categoryId,
     categoryName,
@@ -2087,6 +2092,7 @@ const ProductForm = forwardRef<ProductFormRef, ProductFormProps>(
               ...config,
               isAvailable: false,
               isPopular: false,
+              isFeaturedDeal: false,
             };
           }
 
@@ -2177,6 +2183,7 @@ const ProductForm = forwardRef<ProductFormRef, ProductFormProps>(
             ...config,
             isAvailable: true,
             isPopular: Boolean(config.isPopular),
+            isFeaturedDeal: Boolean(config.isFeaturedDeal),
             category: selectedCategoryId || selectedCategoryName,
             categoryId: selectedCategoryId,
             categoryName: selectedCategoryName,
@@ -2303,6 +2310,12 @@ const ProductForm = forwardRef<ProductFormRef, ProductFormProps>(
                     {config.isPopular && config.isAvailable ? (
                       <span className="rounded-full bg-pink-100 px-2 py-1 text-[10px] font-black text-pink-700">
                         Popular
+                      </span>
+                    ) : null}
+
+                    {config.isFeaturedDeal && config.isAvailable ? (
+                      <span className="rounded-full bg-red-100 px-2 py-1 text-[10px] font-black text-red-700">
+                        Featured
                       </span>
                     ) : null}
 
@@ -2444,6 +2457,29 @@ const ProductForm = forwardRef<ProductFormRef, ProductFormProps>(
                       }))
                     }
                     className="h-5 w-5 shrink-0 accent-green-700"
+                  />
+                </label>
+
+                <label className="mt-3 flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-black text-zinc-950">
+                      Featured Deal
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-zinc-500">
+                      Is store ka product home page ke Featured Deals section mein deal ban kar show hoga.
+                    </p>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.isFeaturedDeal)}
+                    onChange={(event) =>
+                      updateStoreConfig(config.storeId, (prevConfig) => ({
+                        ...prevConfig,
+                        isFeaturedDeal: event.target.checked,
+                      }))
+                    }
+                    className="h-5 w-5 shrink-0 accent-red-600"
                   />
                 </label>
               </div>
@@ -2922,6 +2958,12 @@ const ProductForm = forwardRef<ProductFormRef, ProductFormProps>(
                         </span>
                       ) : null}
 
+                      {config.isFeaturedDeal && config.isAvailable ? (
+                        <span className="rounded-full bg-red-100 px-3 py-1 text-[11px] font-black text-red-700">
+                          Featured Deal
+                        </span>
+                      ) : null}
+
                       <span
                         className={`rounded-full px-3 py-1 text-[11px] font-black ${
                           config.isAvailable
@@ -2938,6 +2980,7 @@ const ProductForm = forwardRef<ProductFormRef, ProductFormProps>(
                     <p>Base: ${getInputValue(previewPrice || 0)}</p>
                     <p>Status: {config.status}</p>
                     <p>Popular: {config.isPopular && config.isAvailable ? "Yes" : "No"}</p>
+                    <p>Featured Deal: {config.isFeaturedDeal && config.isAvailable ? "Yes" : "No"}</p>
                     <p className="md:col-span-2">Sizes: {sizeNames || "Regular"}</p>
                     <p>Modifiers: {config.modifierGroups.length}</p>
                     <p>Upsells: {(config.relatedUpsells || []).length}</p>

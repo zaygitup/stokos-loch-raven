@@ -6,6 +6,7 @@ import Store from "@/models/store";
 import Product from "@/models/product";
 import Category from "@/models/category";
 import ProductStoreConfig from "@/models/productstoreconfig";
+import { STORES } from "@/lib/data/stores";
 
 export type FrontendMenuProduct = {
   id: string;
@@ -1017,4 +1018,128 @@ export async function getStoreMenuProductDetails(
   memSet(cacheKey, fullProduct, DETAIL_CACHE_TTL_MS);
 
   return fullProduct;
+}
+
+// Home page Featured Deals.
+// A featured deal is a per-store ProductStoreConfig flagged with isFeaturedDeal.
+// Each flagged config becomes one card, labelled with its store name.
+export type HomePageFeaturedDeal = {
+  id: string;
+  productSlug: string;
+  title: string;
+  description: string;
+  price: string;
+  image: string;
+  storeSlug: string;
+  storeName: string;
+  sortOrder: number;
+};
+
+function getFirstSizePriceValue(sizes: unknown) {
+  if (!Array.isArray(sizes)) return undefined;
+
+  const withPrice = sizes.find((size: any) => {
+    const value = cleanNumber(size?.price ?? size?.upcharge ?? size?.amount);
+    return value > 0;
+  });
+
+  return withPrice
+    ? withPrice.price ?? withPrice.upcharge ?? withPrice.amount
+    : undefined;
+}
+
+function formatDealPrice(value: number) {
+  return `$${(Number.isFinite(value) ? value : 0).toFixed(2)}`;
+}
+
+export async function getHomePageFeaturedDeals(): Promise<HomePageFeaturedDeal[]> {
+  await connectDB();
+
+  const configs = await ProductStoreConfig.find({
+    isFeaturedDeal: true,
+    $and: [
+      {
+        $or: [
+          { status: "Active" },
+          { status: { $exists: false } },
+          { status: "" },
+        ],
+      },
+      {
+        $or: [
+          { isAvailable: true },
+          { available: true },
+          {
+            isAvailable: { $exists: false },
+            available: { $exists: false },
+          },
+        ],
+      },
+    ],
+  })
+    .select({
+      _id: 1,
+      productId: 1,
+      storeId: 1,
+      price: 1,
+      image: 1,
+      sizes: 1,
+      sortOrder: 1,
+    })
+    .sort({ sortOrder: 1, updatedAt: -1 })
+    .lean<any[]>()
+    .maxTimeMS(5000);
+
+  if (!configs.length) return [];
+
+  const productIds = Array.from(
+    new Set(configs.map((config) => getConfigProductKey(config)).filter(Boolean))
+  );
+
+  if (!productIds.length) return [];
+
+  const products = await findListProductsByConfigIds(productIds);
+  const productMap = buildProductMap(products);
+
+  const storeNameById = new Map(
+    STORES.map((store) => [normalizeStoreId(store.slug), store.displayName])
+  );
+
+  const deals = configs
+    .map((config) => {
+      const product = productMap.get(getConfigProductKey(config));
+      if (!product) return null;
+
+      const storeSlug = normalizeStoreId(config.storeId);
+      const storeName = storeNameById.get(storeSlug);
+      if (!storeName) return null;
+
+      const priceValue = cleanNumber(
+        firstFilled(
+          config?.price,
+          getFirstSizePriceValue(config?.sizes),
+          product?.price,
+          product?.numericPrice,
+          getFirstSizePriceValue(product?.sizes)
+        )
+      );
+
+      const title = cleanString(product?.name || product?.title || "Menu Item");
+      const slug = slugify(product?.slug || title || getConfigProductKey(config));
+
+      return {
+        id: `${storeSlug}:${slug}`,
+        productSlug: slug,
+        title,
+        description: cleanString(product?.description),
+        price: formatDealPrice(priceValue),
+        image: cleanString(config?.image || product?.image) || FALLBACK_IMAGE,
+        storeSlug,
+        storeName,
+        sortOrder: cleanNumber(config?.sortOrder),
+      };
+    })
+    .filter(Boolean) as HomePageFeaturedDeal[];
+
+  return deals.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 }
