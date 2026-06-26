@@ -11,6 +11,7 @@ import DealsSection from "@/components/dealssection";
 import CartSidebar from "@/components/cartsidebar";
 import ScrollMenu from "@/components/scrollmenu";
 import MenuSectionsClient from "@/components/menusectionclient";
+import BottomNavigation from "@/components/bottomnavigation";
 import {
   getCachedStoreMenuPayload,
   type StoreMenuApiData,
@@ -124,6 +125,7 @@ export default async function StorePage({ params }: StorePageProps) {
 
       <BackToTop />
       <Footer store={store} />
+      <BottomNavigation />
     </main>
   );
 }

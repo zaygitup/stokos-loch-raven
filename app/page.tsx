@@ -8,6 +8,7 @@ import MainFooter from "@/components/mainwebsite/mainfooter";
 import BackToTop from "@/components/mainwebsite/mainbacktotop";
 import FeaturedDeals from "@/components/mainwebsite/maindealssection";
 import ExploreMenuSection from "@/components/mainwebsite/mainmenusection";
+import BottomNavigation from "@/components/bottomnavigation";
 
 function StoreSelectionFallback() {
   return (
@@ -60,6 +61,8 @@ export default async function Page({
 
         <MainFooter />
       </main>
+
+      <BottomNavigation />
     </>
   );
 }

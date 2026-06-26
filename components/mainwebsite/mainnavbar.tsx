@@ -104,10 +104,10 @@ export default function MainNavbar() {
               <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
             </div>
 
-            {/* Hamburger – Mobile/Tablet */}
+            {/* Mobile/Tablet Right Actions */}
             <div className="ml-auto flex items-center gap-2 xl:hidden">
-              {/* Theme toggle visible on mobile too */}
-              <ThemeToggle isDark={isDark} onToggle={toggleTheme} compact />
+              {/* Sign In – prominent on mobile */}
+              <MobileSignInButton />
 
               <button
                 type="button"
@@ -120,19 +120,6 @@ export default function MainNavbar() {
               </button>
             </div>
           </div>
-
-          {/* Tablet / Desktop Sub-nav */}
-          <nav className="-mx-4 flex items-center justify-start gap-7 overflow-x-auto border-t border-white/20 px-4 py-3 text-xs font-extrabold uppercase tracking-wide no-scrollbar xl:hidden sm:-mx-5 sm:px-5 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
-            {navLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="whitespace-nowrap text-white transition hover:text-green-200"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
         </div>
       </header>
 
@@ -186,7 +173,7 @@ export default function MainNavbar() {
             ))}
           </nav>
 
-          {/* CTA + Auth */}
+          {/* CTA + Auth + Theme */}
           <div className="flex flex-col gap-3 px-4 pb-5 pt-4">
             <a
               href="/mainwebsite/location?action=order"
@@ -198,6 +185,16 @@ export default function MainNavbar() {
 
             {/* Auth buttons stacked */}
             <MobileAuthControls onClose={() => setMobileMenuOpen(false)} />
+
+            {/* Theme toggle inside hamburger */}
+            <button
+              type="button"
+              onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-white/30 bg-white/15 py-3 text-sm font-black uppercase text-white transition hover:bg-white/25"
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+              <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -290,6 +287,21 @@ function DesktopAuthControls() {
         />
       </Show>
     </div>
+  );
+}
+
+function MobileSignInButton() {
+  return (
+    <Show when="signed-out">
+      <SignInButton mode="modal">
+        <button
+          type="button"
+          className="rounded-full bg-white px-4 py-2 text-xs font-black uppercase text-[#16A34A] shadow-sm transition hover:bg-green-50"
+        >
+          Sign In
+        </button>
+      </SignInButton>
+    </Show>
   );
 }
 

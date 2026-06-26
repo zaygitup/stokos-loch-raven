@@ -119,7 +119,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="top-0 z-50 w-full border-b border-zinc-800 bg-green-600 text-white shadow-md dark:bg-green-700">
+      <header className="sticky top-0 z-50 w-full border-b border-zinc-800 bg-green-600 text-white shadow-md dark:bg-green-700">
         <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10">
           {/* Top Row */}
           <div className="relative flex min-h-[76px] items-center justify-between gap-3 md:min-h-[82px] 2xl:h-[86px]">
@@ -193,7 +193,7 @@ export default function Navbar() {
                 type="button"
                 onClick={toggleTheme}
                 aria-label="Toggle dark mode"
-                className="relative flex h-9 w-[64px] shrink-0 cursor-pointer items-center rounded-full border border-white/25 bg-white/20 px-1 md:w-[70px]"
+                className="relative hidden h-9 w-[64px] shrink-0 cursor-pointer items-center rounded-full border border-white/25 bg-white/20 px-1 md:w-[70px] md:flex"
               >
                 <span
                   className={`absolute flex h-7 w-7 items-center justify-center rounded-full bg-white transition-transform duration-300 ${
@@ -286,27 +286,6 @@ export default function Navbar() {
               </div>
             </div>
           </div>
-
-          {/* Mobile Navigation */}
-          <nav className="-mx-4 flex w-auto items-center justify-start gap-7 overflow-x-auto border-t border-white/20 px-4 py-3 text-xs uppercase no-scrollbar md:hidden">
-            <Link href="/" className={navClass(pathname === "/")}>
-              Home
-            </Link>
-
-            <Link
-              href={`${storeMenuUrl}#trending`}
-              className={navClass(isMenuActive)}
-            >
-              Menu
-            </Link>
-
-            <Link
-              href={`/store/${currentStore.slug}/contact`}
-              className={navClass(isContactActive)}
-            >
-              Contact
-            </Link>
-          </nav>
         </div>
       </header>
 
@@ -439,7 +418,7 @@ export default function Navbar() {
         <button
           type="button"
           onClick={toggleCart}
-          className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#DA3327] text-white shadow-2xl transition hover:scale-105 active:scale-95 md:h-16 md:w-16"
+          className="fixed bottom-24 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#DA3327] text-white shadow-2xl transition hover:scale-105 active:scale-95 md:bottom-5 md:h-16 md:w-16"
         >
           <ShoppingCart size={24} />
 
