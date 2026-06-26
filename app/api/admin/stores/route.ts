@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/server/require-admin";
 import connectMongoDB from "@/lib/mongodb";
 import Store from "@/models/store";
+import {
+  buildStoreExtraFields,
+  type StoreExtraFields,
+} from "@/lib/server/store-fields";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type StoreBody = {
+type StoreBody = StoreExtraFields & {
   name?: string;
   slug?: string;
   location?: string;
@@ -103,6 +107,7 @@ export async function POST(req: Request) {
       minimumOrder: Number(body.minimumOrder ?? 0),
       status: "Active",
       sortOrder: 0,
+      ...buildStoreExtraFields(body),
     });
 
     return NextResponse.json(

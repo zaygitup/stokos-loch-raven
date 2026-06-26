@@ -212,6 +212,8 @@ export default function CartSidebar() {
           items: cart,
           orderType,
           deliveryAddress,
+          deliveryLat: localStorage.getItem("stokos_delivery_lat") || undefined,
+          deliveryLng: localStorage.getItem("stokos_delivery_lng") || undefined,
           orderDay: orderDay || "Today",
           orderTime: orderTime || "ASAP",
           orderStore: orderStore.slug,

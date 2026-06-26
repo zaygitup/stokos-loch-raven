@@ -56,6 +56,8 @@ const OrderSchema = new Schema(
     },
 
     deliveryAddress: { type: String },
+    deliveryLat: { type: Number },
+    deliveryLng: { type: Number },
     orderDay: { type: String, default: "Today" },
     orderTime: { type: String, default: "ASAP" },
 

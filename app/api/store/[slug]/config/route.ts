@@ -18,6 +18,11 @@ export async function GET(
       deliveryFee?: number;
       taxRate?: number;
       minimumOrder?: number;
+      latitude?: number | null;
+      longitude?: number | null;
+      deliveryRadiusKm?: number;
+      timezone?: string;
+      hours?: { open?: string; close?: string; closed?: boolean }[];
     } | null;
 
     if (!store) {
@@ -32,6 +37,11 @@ export async function GET(
       deliveryFee: store.deliveryFee ?? 0,
       taxRate: store.taxRate ?? 0,
       minimumOrder: store.minimumOrder ?? 0,
+      latitude: store.latitude ?? null,
+      longitude: store.longitude ?? null,
+      deliveryRadiusKm: store.deliveryRadiusKm ?? 8,
+      timezone: store.timezone || "America/New_York",
+      hours: Array.isArray(store.hours) ? store.hours : [],
     });
   } catch (error) {
     console.error("STORE CONFIG ERROR:", error);

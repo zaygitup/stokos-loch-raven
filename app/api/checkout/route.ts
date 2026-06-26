@@ -7,6 +7,7 @@ import Store from "@/models/store";
 import { validatePromoCode, incrementPromoUsage } from "@/lib/promo";
 import { awardLoyaltyPoints } from "@/lib/loyalty";
 import { toCents, toDollars, percentOfCents, formatCents } from "@/lib/money";
+import { isWithinRadius } from "@/lib/geo";
 
 function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -44,6 +45,8 @@ export async function POST(req: Request) {
       slug,
       orderType,
       deliveryAddress,
+      deliveryLat,
+      deliveryLng,
       orderDay,
       orderTime,
       orderStore,
@@ -94,6 +97,9 @@ export async function POST(req: Request) {
       deliveryFee?: number;
       taxRate?: number;
       minimumOrder?: number;
+      latitude?: number | null;
+      longitude?: number | null;
+      deliveryRadiusKm?: number;
     } | null;
 
     if (!storeDoc) {
@@ -104,6 +110,41 @@ export async function POST(req: Request) {
     }
 
     const storeName = storeDoc.name || storeSlug;
+
+    // Re-validate the delivery point against the service area. Only enforced
+    // when the branch has a configured pin — legacy stores without coords fall
+    // back to the address-only check above.
+    const parsedDeliveryLat = Number(deliveryLat);
+    const parsedDeliveryLng = Number(deliveryLng);
+
+    if (
+      orderType === "delivery" &&
+      storeDoc.latitude != null &&
+      storeDoc.longitude != null
+    ) {
+      if (
+        !Number.isFinite(parsedDeliveryLat) ||
+        !Number.isFinite(parsedDeliveryLng)
+      ) {
+        return NextResponse.json(
+          { error: "Please select your delivery location on the map." },
+          { status: 400 }
+        );
+      }
+
+      const within = isWithinRadius(
+        { lat: storeDoc.latitude, lng: storeDoc.longitude },
+        { lat: parsedDeliveryLat, lng: parsedDeliveryLng },
+        Number(storeDoc.deliveryRadiusKm ?? 8)
+      );
+
+      if (!within) {
+        return NextResponse.json(
+          { error: "Delivery address is outside the delivery area." },
+          { status: 400 }
+        );
+      }
+    }
     const taxRate = Number(storeDoc.taxRate ?? 0);
 
     // All money math is done in integer cents (see lib/money.ts) so the
@@ -292,6 +333,14 @@ export async function POST(req: Request) {
       storeName,
       orderType,
       deliveryAddress: deliveryAddress || "",
+      deliveryLat:
+        orderType === "delivery" && Number.isFinite(parsedDeliveryLat)
+          ? parsedDeliveryLat
+          : undefined,
+      deliveryLng:
+        orderType === "delivery" && Number.isFinite(parsedDeliveryLng)
+          ? parsedDeliveryLng
+          : undefined,
       orderDay: formattedDay,
       orderTime: formattedTime,
       clerkUserId: clerkUserId || undefined,

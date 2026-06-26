@@ -5,6 +5,12 @@ import { Plus } from "lucide-react";
 import StoreForm from "./forms/storeform";
 import StoreTable from "./components/storetable";
 
+export type DayHours = {
+  open: string;
+  close: string;
+  closed: boolean;
+};
+
 export type StoreItem = {
   _id: string;
   name: string;
@@ -15,6 +21,11 @@ export type StoreItem = {
   deliveryFee?: number;
   taxRate?: number;
   minimumOrder?: number;
+  latitude?: number | null;
+  longitude?: number | null;
+  deliveryRadiusKm?: number;
+  timezone?: string;
+  hours?: DayHours[];
 };
 
 export default function StoresPage() {

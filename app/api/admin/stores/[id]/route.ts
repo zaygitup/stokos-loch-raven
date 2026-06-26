@@ -3,11 +3,15 @@ import { requireAdmin } from "@/lib/server/require-admin";
 import mongoose from "mongoose";
 import connectMongoDB from "@/lib/mongodb";
 import Store from "@/models/store";
+import {
+  buildStoreExtraFields,
+  type StoreExtraFields,
+} from "@/lib/server/store-fields";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type StoreBody = {
+type StoreBody = StoreExtraFields & {
   name?: string;
   slug?: string;
   location?: string;
@@ -95,6 +99,7 @@ export async function PATCH(
           deliveryFee: Number(body.deliveryFee ?? 0),
           taxRate: Number(body.taxRate ?? 0),
           minimumOrder: Number(body.minimumOrder ?? 0),
+          ...buildStoreExtraFields(body),
         },
       },
       { new: true }
