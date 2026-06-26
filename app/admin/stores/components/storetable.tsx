@@ -23,7 +23,7 @@ export default function StoreTable({
   }
 
   return (
-    <div className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="mb-5">
         <h2 className="text-xl font-black text-zinc-950">Stores</h2>
         <p className="mt-1 text-sm font-medium text-zinc-500">

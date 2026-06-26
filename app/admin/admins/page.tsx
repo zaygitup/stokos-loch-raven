@@ -115,7 +115,7 @@ export default function AdminsPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
           {/* Add Admin Form */}
           <div className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-sm h-fit">
             <h2 className="text-xl font-black text-zinc-950 mb-1">Add Admin</h2>
@@ -166,7 +166,7 @@ export default function AdminsPage() {
           </div>
 
           {/* Admin List Table */}
-          <div className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
+          <div className="min-w-0 rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="mb-5">
               <h2 className="text-xl font-black text-zinc-950">Active Admins</h2>
               <p className="mt-1 text-sm font-medium text-zinc-500">

@@ -194,7 +194,7 @@ export default function AdminDashboardPage() {
         />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_420px]">
         <div className="rounded-[30px] border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-center justify-between gap-4">
             <div>

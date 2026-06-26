@@ -131,7 +131,7 @@ export default function StoresPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
           <div ref={formRef}>
             <StoreForm
               editingStore={editingStore}

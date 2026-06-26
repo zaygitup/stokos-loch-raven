@@ -271,7 +271,7 @@ export default function OrdersDashboard() {
         />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
         {/* Order list */}
         <div className="overflow-hidden rounded-[30px] border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-200 p-5">

@@ -88,7 +88,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             </div>
           </header>
 
-          <div className="px-4 py-5 md:px-6 xl:px-8">{children}</div>
+          <div className="overflow-x-hidden px-4 py-5 md:px-6 xl:px-8">{children}</div>
         </section>
       </main>
     </BranchProvider>
