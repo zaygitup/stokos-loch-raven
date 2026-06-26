@@ -1,3 +1,6 @@
+"use client";
+
+import { useRef, useState } from "react";
 import { Star } from "lucide-react";
 
 const testimonials = [
@@ -15,71 +18,94 @@ const testimonials = [
   },
 ];
 
+function ReviewCard({ item }: { item: (typeof testimonials)[0] }) {
+  return (
+    <article className="flex h-full flex-col rounded-[20px] bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] ring-1 ring-black/5 dark:bg-[#121b13] dark:ring-white/5 dark:shadow-[0_14px_35px_rgba(0,0,0,0.28)]">
+      <div className="mb-4 flex items-center gap-1 text-[#ff3131]">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Star key={i} size={15} fill="currentColor" strokeWidth={0} />
+        ))}
+      </div>
+
+      <p className="flex-1 text-[14px] font-medium leading-[1.6] text-neutral-700 dark:text-neutral-300">
+        "{item.text}"
+      </p>
+
+      <div className="mt-5 flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-[#ff3131] dark:bg-white/5">
+          <Star size={14} fill="currentColor" strokeWidth={0} />
+        </div>
+        <div>
+          <h3 className="text-[13px] font-black text-black dark:text-white">{item.name}</h3>
+          <p className="text-[11px] font-medium text-black/50 dark:text-white/50">Verified order</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function MainTestimonials() {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const handleScroll = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    const cardWidth = el.scrollWidth / testimonials.length;
+    setActiveIndex(Math.round(el.scrollLeft / cardWidth));
+  };
+
   return (
     <section
       id="testimonials"
-      className="w-full bg-[#f7faf6] px-4 py-16 text-black transition-colors duration-300 dark:bg-[#07110a] dark:text-white sm:px-6 lg:px-8"
+      className="w-full bg-[#f7faf6] px-4 py-12 text-black transition-colors duration-300 dark:bg-[#07110a] dark:text-white sm:px-6 sm:py-16 lg:px-8"
     >
       <div className="mx-auto w-full max-w-[1280px]">
-        {/* Header */}
-        <div className="mb-9 md:mb-8 lg:mb-9">
-          <p className="mb-3 text-[12px] font-black uppercase tracking-[0.35em] text-[#ff3131] md:text-[11px] lg:text-[12px]">
+        <div className="mb-7 md:mb-8">
+          <p className="mb-2 text-[11px] font-black uppercase tracking-[0.35em] text-[#ff3131]">
             What Guests Say
           </p>
-
-          <h2 className="text-[34px] font-black leading-tight tracking-[-0.04em] text-black dark:text-white md:text-[38px] lg:text-[44px]">
+          <h2 className="text-[28px] font-black leading-tight tracking-[-0.04em] text-black dark:text-white sm:text-[34px] md:text-[38px] lg:text-[44px]">
             Reviews from real customers
           </h2>
         </div>
 
-        {/* Cards */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 md:gap-4 lg:gap-6">
+        {/* Mobile: horizontal swipe carousel */}
+        <div className="md:hidden">
+          <div
+            ref={trackRef}
+            onScroll={handleScroll}
+            className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 no-scrollbar"
+          >
+            {testimonials.map((item) => (
+              <div
+                key={item.name}
+                className="w-[82vw] max-w-[320px] flex-shrink-0 snap-start"
+              >
+                <ReviewCard item={item} />
+              </div>
+            ))}
+          </div>
+
+          {/* Dot indicators */}
+          <div className="mt-4 flex justify-center gap-2">
+            {testimonials.map((_, i) => (
+              <span
+                key={i}
+                className={`block h-1.5 rounded-full transition-all duration-300 ${
+                  i === activeIndex
+                    ? "w-5 bg-[#ff3131]"
+                    : "w-1.5 bg-zinc-300 dark:bg-zinc-700"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop: 3-column grid */}
+        <div className="hidden gap-4 md:grid md:grid-cols-3 lg:gap-6">
           {testimonials.map((item) => (
-            <article
-              key={item.name}
-              className="rounded-[20px] bg-white p-7 shadow-[0_10px_30px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(0,0,0,0.12)] dark:bg-[#121b13] dark:ring-white/5 dark:shadow-[0_14px_35px_rgba(0,0,0,0.28)] md:p-4 lg:p-8"
-            >
-              {/* Stars */}
-              <div className="mb-5 flex items-center gap-1.5 text-[#ff3131] md:mb-4 md:gap-1 lg:mb-5 lg:gap-1.5">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <Star
-                    key={index}
-                    size={17}
-                    fill="currentColor"
-                    strokeWidth={2.5}
-                    className="md:h-[14px] md:w-[14px] lg:h-[17px] lg:w-[17px]"
-                  />
-                ))}
-              </div>
-
-              {/* Review */}
-              <p className="min-h-[98px] text-[16px] font-medium leading-[1.6] text-neutral-700 dark:text-neutral-300 md:min-h-[150px] md:text-[12px] md:leading-[1.55] lg:min-h-[130px] lg:text-[16px] lg:leading-[1.6]">
-                “{item.text}”
-              </p>
-
-              {/* Customer */}
-              <div className="mt-7 flex items-center gap-4 md:mt-5 md:gap-3 lg:mt-7 lg:gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/5 text-[#ff3131] dark:bg-white/5 md:h-9 md:w-9 lg:h-11 lg:w-11">
-                  <Star
-                    size={17}
-                    fill="currentColor"
-                    strokeWidth={2.5}
-                    className="md:h-[14px] md:w-[14px] lg:h-[17px] lg:w-[17px]"
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-[15px] font-black leading-tight text-black dark:text-white md:text-[13px] lg:text-[15px]">
-                    {item.name}
-                  </h3>
-
-                  <p className="mt-1 text-[13px] font-medium leading-none text-black/60 dark:text-white/65 md:text-[11px] lg:text-[13px]">
-                    Verified order
-                  </p>
-                </div>
-              </div>
-            </article>
+            <ReviewCard key={item.name} item={item} />
           ))}
         </div>
       </div>

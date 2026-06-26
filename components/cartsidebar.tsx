@@ -15,6 +15,8 @@ import {
   Clock,
   MapPin,
   PencilLine,
+  ChevronLeft,
+  Plus,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -260,18 +262,31 @@ export default function CartSidebar() {
         }`}
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b p-4 dark:border-zinc-800 sm:p-5">
-            <h2 className="text-lg font-black uppercase italic sm:text-xl">
-              Your Order ({cart.length})
-            </h2>
-
+          <div className="border-b dark:border-zinc-800">
+            {/* Back to Menu — prominent on mobile */}
             <button
               type="button"
               onClick={toggleCart}
-              className="rounded-full p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              className="flex w-full items-center gap-2 px-4 pt-4 pb-2 text-sm font-black uppercase text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-colors"
             >
-              <X size={24} />
+              <ChevronLeft size={18} />
+              Back to Menu
             </button>
+
+            <div className="flex items-center justify-between px-4 pb-4">
+              <h2 className="text-lg font-black uppercase italic sm:text-xl">
+                Your Order ({cart.length})
+              </h2>
+
+              <button
+                type="button"
+                onClick={toggleCart}
+                aria-label="Close cart"
+                className="rounded-full p-2 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
           <div className="no-scrollbar flex-grow space-y-4 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
@@ -543,6 +558,15 @@ export default function CartSidebar() {
                 <span className="text-xl font-black">${estimatedTotal.toFixed(2)}</span>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={toggleCart}
+              className="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-green-700 font-black uppercase text-green-700 transition hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-950/30"
+            >
+              <Plus size={18} />
+              Add More Items
+            </button>
 
             <button
               type="button"

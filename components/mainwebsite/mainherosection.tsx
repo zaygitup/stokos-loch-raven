@@ -27,10 +27,6 @@ export default function MainHeroSection() {
         {/* Content */}
         <div className="relative z-10 flex flex-col md:h-full md:max-w-[500px] md:justify-center md:px-10 lg:max-w-[620px] lg:px-14">
           <div className="px-6 pb-8 pt-8 sm:px-8 sm:pt-10 md:px-0 md:py-0">
-            <div className="mb-5 inline-flex w-fit items-center gap-2 rounded-full bg-green-700 px-4 py-2 text-[11px] font-extrabold uppercase tracking-wide text-white backdrop-blur-md md:mb-6">
-              <span className="h-2 w-2 rounded-full bg-[#DA3327]" />
-              Limited Time Deal
-            </div>
 
             <h1 className="max-w-[560px] text-[39px] font-black leading-[0.98] tracking-[-0.045em] text-white sm:text-[48px] md:text-[56px] lg:text-[68px]">
               Hot Deals,
